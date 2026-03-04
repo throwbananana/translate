@@ -1,0 +1,1 @@
+Yes, OCR detection for EPUBs is implemented in this project. The `file_processor.py` contains logic to extract text from images embedded within EPUB files using `pytesseract` and `Pillow` libraries, especially when there's no alternative text (like alt, title, or aria-label) available for those images.

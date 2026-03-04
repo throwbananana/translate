@@ -1,0 +1,54 @@
+========================================
+           BUG FIXED V1.3.2
+========================================
+
+Date: 2025-12-08
+Status: ✓ FIXED
+
+========================================
+Fixed Issues
+========================================
+
+1. Deprecated Model Usage in Tests
+   - Problem: `test_translation.py` was using the deprecated `gemini-1.5-flash` model.
+   - Error: "404 models/gemini-1.5-flash is not found"
+   - Fix: Updated to `gemini-2.5-flash` in `test_translation.py`.
+
+2. Outdated Help Text in GUI
+   - Problem: The tooltip/help text for Gemini API key configuration referenced `gemini-1.5-*`.
+   - Fix: Updated `book_translator_gui.pyw` to reference `gemini-2.5-*`.
+
+3. Outdated Documentation
+   - Problem: `README.md` example JSON config referenced `gemini-1.5-flash`.
+   - Fix: Updated `README.md` to reference `gemini-2.5-flash`.
+
+4. AttributeError in File Loading
+   - Problem: `load_file_content` tried to access undefined `self.file_content`.
+   - Error: "AttributeError: 'BookTranslatorGUI' object has no attribute 'file_content'"
+   - Fix: Corrected to use `self.original_text` in `book_translator_gui.pyw`.
+
+5. NameError in Translation Logic
+   - Problem: `translate_text` method attempted to use `api_type` before it was defined.
+   - Error: "NameError: name 'api_type' is not defined"
+   - Fix: Added `api_type = self.get_current_api_type()` at the start of the method.
+
+========================================
+Verification
+========================================
+
+All test suites ran successfully (web-translation tests removed in v1.3):
+✓ run_all_tests.bat
+✓ test_translation.py
+✓ test_autosave.py
+✓ test_startup.py
+
+Note: You may encounter "429 Quota exceeded" errors during extensive testing if using a free tier API key. This is a limitation of the API provider, not a bug in the code. The application handles these errors gracefully.
+
+========================================
+Current Status
+========================================
+
+The application is fully patched and ready for use.
+
+Recommended Action:
+- Run `start.bat` to launch the application.

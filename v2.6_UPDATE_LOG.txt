@@ -1,0 +1,35 @@
+========================================
+           UPDATE LOG V2.6
+========================================
+
+Date: 2026-02-02
+Status: ✓ DEPLOYED
+
+========================================
+New Features & Improvements
+========================================
+
+1. Robust API Rate Limiting Handling
+   - Implemented smart retry logic with exponential backoff for '429 Quota Exceeded' errors.
+   - Automatically detects wait time from API error messages.
+   - Prevents immediate failure during batch translations or large file processing.
+   - Falls back to alternative providers only after exhausting retries.
+
+2. Stability Verification
+   - Verified syntax and integrity of core GUI components.
+   - Validated search functionality (Anna's Archive).
+   - Confirmed Auto-Save and Backup systems are operational.
+
+========================================
+Technical Details
+========================================
+
+Modified `translation_engine.py`:
+- Updated `translate()` method to accept `max_retries` and `retry_count`.
+- Added regex parsing for "retry in X seconds" messages.
+- Default max retries set to 3 with exponential backoff (5s, 10s, 20s...).
+
+========================================
+Next Steps
+========================================
+- Run `start.bat` to use the improved application.

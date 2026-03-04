@@ -1,0 +1,15 @@
+# Windows specific
+nul
+desktop.ini
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Browser Data (Recommended to ignore)
+chrome_profile/
+
+# Logs
+*.log
+npm-debug.log*

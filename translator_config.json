@@ -1,0 +1,24 @@
+{
+  "api_configs": {
+    "gemini": {
+      "api_key": "test_key_12345",
+      "model": "gemini-2.5-flash"
+    },
+    "openai": {
+      "api_key": "",
+      "model": "gpt-3.5-turbo",
+      "base_url": ""
+    },
+    "custom": {
+      "api_key": "",
+      "model": "",
+      "base_url": ""
+    },
+    "lm_studio": {
+      "api_key": "lm-studio",
+      "model": "qwen2.5-7b-instruct-1m",
+      "base_url": "http://127.0.0.1:1234/v1"
+    }
+  },
+  "target_language": "中文"
+}

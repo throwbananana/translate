@@ -1,0 +1,11 @@
+Chapter 1: Introduction
+
+This is a test book for translation.
+We want to see how well the translation works.
+
+Chapter 2: Testing
+
+The translation tool should be able to handle multiple paragraphs.
+It should preserve the formatting and structure of the original text.
+
+This is another paragraph to test the segmentation functionality.
