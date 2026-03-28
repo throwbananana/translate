@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#! python
 # -*- coding: utf-8 -*-
 """
 文件处理器 (File Processor) 模块
@@ -174,12 +174,12 @@ class FileProcessor:
 
         elif ext == '.epub':
             if not EPUB_SUPPORT:
-                raise ImportError("未安装 ebooklib 或 beautifulsoup4，无法读取 EPUB 文件。请运行: pip install ebooklib beautifulsoup4")
+                raise ImportError("未安装 ebooklib 或 beautifulsoup4，无法读取 EPUB 文件。请运行: py -m pip install ebooklib beautifulsoup4")
             return self.extract_epub_text(filepath, progress_callback)
 
         elif ext == '.docx':
             if not DOCX_SUPPORT:
-                raise ImportError("未安装 python-docx，无法读取 DOCX 文件。请运行: pip install python-docx")
+                raise ImportError("未安装 python-docx，无法读取 DOCX 文件。请运行: py -m pip install python-docx")
             return self.extract_docx_text(filepath, progress_callback)
 
         elif ext in ['.md', '.markdown']:

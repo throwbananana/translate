@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#! python
 # -*- coding: utf-8 -*-
 """
 成本估算模块 (Cost Estimator)
@@ -86,4 +86,3 @@ class CostEstimator:
             'cost_usd': round(total_cost, 4),
             'matched_model': found_model
         }
-

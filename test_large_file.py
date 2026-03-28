@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#! python
 # -*- coding: utf-8 -*-
 """
 测试大文件加载

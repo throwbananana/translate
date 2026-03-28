@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#! python
 # -*- coding: utf-8 -*-
 """
 核心功能自动化测试
@@ -223,4 +223,4 @@ print("""
 """)
 
 print("\n下一步：测试实际翻译功能")
-print("运行：python test_actual_translation.py")
+print("运行：py test_actual_translation.py")

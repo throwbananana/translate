@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#! python
 # -*- coding: utf-8 -*-
 """
 测试程序启动
@@ -51,7 +51,7 @@ try:
     print("All tests passed!")
     print("=" * 60)
     print("\nProgram should start normally now.")
-    print("Run: python book_translator_gui.pyw")
+    print("Run: py book_translator_gui.pyw")
     print("Or double-click: start.bat")
 
 except Exception as e:

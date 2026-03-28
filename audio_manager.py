@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#! python
 # -*- coding: utf-8 -*-
 """
 音频管理器 (Audio Manager)
@@ -33,7 +33,7 @@ class AudioManager:
 
     def check_dependency(self):
         if not EDGE_TTS_AVAILABLE:
-            return False, "未安装 edge-tts 库。请运行: pip install edge-tts"
+            return False, "未安装 edge-tts 库。请运行: py -m pip install edge-tts"
         return True, ""
 
     async def _generate_audio(self, text, output_file, voice, rate='+0%', volume='+0%'):

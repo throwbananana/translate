@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#! python
 # -*- coding: utf-8 -*-
 """
 Docx 处理模块 (Docx Handler)
@@ -16,7 +16,7 @@ except ImportError:
 class DocxHandler:
     def __init__(self, filepath):
         if not DOCX_AVAILABLE:
-            raise ImportError("需安装 python-docx 库才能使用此功能: pip install python-docx")
+            raise ImportError("需安装 python-docx 库才能使用此功能: py -m pip install python-docx")
         
         self.filepath = filepath
         self.document = Document(filepath)
@@ -139,4 +139,3 @@ class DocxHandler:
                 
         doc.save(output_path)
         return output_path
-

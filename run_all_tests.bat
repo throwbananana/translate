@@ -11,21 +11,21 @@ echo.
 echo ========================================
 echo Step 1/3: Generate test files
 echo ========================================
-python test_large_file.py
+py test_large_file.py
 if errorlevel 1 goto error
 
 echo.
 echo ========================================
 echo Step 2/3: Test core features
 echo ========================================
-python test_core_features.py
+py test_core_features.py
 if errorlevel 1 goto error
 
 echo.
 echo ========================================
 echo Step 3/3: Test translation
 echo ========================================
-python test_actual_translation.py
+py test_actual_translation.py
 if errorlevel 1 goto error
 
 echo.

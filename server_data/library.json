@@ -1,0 +1,15 @@
+[
+  {
+    "id": "1",
+    "title": "使用指南 (User Guide)",
+    "author": "Developer",
+    "description": "Book Translator 官方使用指南",
+    "url": "https://files.catbox.moe/sample.pdf",
+    "uploader": "Admin",
+    "date": "2025-01-01",
+    "size": "1.2MB",
+    "md5": "00000000000000000000000000000000",
+    "downloads": 1024,
+    "status": "approved"
+  }
+]

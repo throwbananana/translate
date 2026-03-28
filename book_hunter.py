@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#! python
 # -*- coding: utf-8 -*-
 """
 Book Hunter Agent
@@ -171,4 +171,3 @@ class BookHunter:
             
         except:
             return results # Fallback
-

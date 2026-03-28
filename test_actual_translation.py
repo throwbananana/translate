@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#! python
 # -*- coding: utf-8 -*-
 """
 实际翻译功能测试
@@ -177,4 +177,4 @@ print("""
 """)
 
 print("\n下一步：测试完整应用程序")
-print("运行：python book_translator_gui.pyw")
+print("运行：py book_translator_gui.pyw")

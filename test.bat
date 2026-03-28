@@ -4,7 +4,7 @@ echo   Large File Test
 echo ========================================
 echo.
 echo Step 1: Generate test files...
-python test_large_file.py
+py test_large_file.py
 echo.
 echo Step 2: Starting translator...
 echo.
@@ -15,4 +15,4 @@ echo   3. Click "Show full text" button
 echo   4. Try translation
 echo.
 pause
-python book_translator_gui.pyw
+py book_translator_gui.pyw

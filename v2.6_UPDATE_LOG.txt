@@ -20,6 +20,11 @@ New Features & Improvements
    - Validated search functionality (Anna's Archive).
    - Confirmed Auto-Save and Backup systems are operational.
 
+3. Windows Launcher Compatibility Hotfix (2026-03-28)
+   - Replaced `#!/usr/bin/env python3` shebangs with `#! python` across entry scripts.
+   - Updated `.bat` launchers to use `py` instead of `python`.
+   - Updated dependency instructions to use `py -m pip` so packages install into the same interpreter used at runtime.
+
 ========================================
 Technical Details
 ========================================
@@ -32,4 +37,4 @@ Modified `translation_engine.py`:
 ========================================
 Next Steps
 ========================================
-- Run `start.bat` to use the improved application.
+- Run `start.bat` or `py book_translator_gui.pyw` to use the improved application.

@@ -6,7 +6,7 @@ echo.
 echo Starting translator...
 echo.
 
-python book_translator_gui.pyw
+py book_translator_gui.pyw
 
 if errorlevel 1 (
     echo.
@@ -15,7 +15,7 @@ if errorlevel 1 (
     echo 1. Python is installed
     echo 2. Dependencies are installed
     echo.
-    echo Try: pip install -r requirements.txt
+    echo Try: py -m pip install -r requirements.txt
     echo.
     pause
 )

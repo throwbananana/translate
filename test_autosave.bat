@@ -3,7 +3,7 @@ echo ========================================
 echo   API Auto-Save Test
 echo ========================================
 echo.
-python test_autosave.py
+py test_autosave.py
 echo.
 echo ========================================
 echo   Test Complete!

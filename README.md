@@ -22,23 +22,23 @@
 ## 安装依赖
 
 ```bash
-pip install -r requirements.txt
+py -m pip install -r requirements.txt
 ```
 
 按需安装示例：
 
 ```bash
 # 基础功能（TXT + OpenAI API）
-pip install openai requests
+py -m pip install openai requests
 
 # 添加PDF支持 (含OCR)
-pip install PyPDF2 pdfplumber pdf2image pytesseract Pillow
+py -m pip install PyPDF2 pdfplumber pdf2image pytesseract Pillow
 
 # 添加EPUB支持
-pip install ebooklib beautifulsoup4
+py -m pip install ebooklib beautifulsoup4
 
 # 添加Gemini API支持
-pip install google-generativeai
+py -m pip install google-generativeai
 ```
 
 ## 快速测试（已预配置）
@@ -50,7 +50,7 @@ pip install google-generativeai
 
 ```bash
 # 1. 运行程序
-python book_translator_gui.pyw
+py book_translator_gui.pyw
 
 # 2. 点击“浏览...”选择 sample_book.txt
 # 3. 点击“开始翻译”
@@ -65,7 +65,7 @@ python book_translator_gui.pyw
 
 ```bash
 # Windows（无控制台窗口）
-python book_translator_gui.pyw
+py book_translator_gui.pyw
 ```
 
 ### 2. 配置API
@@ -174,7 +174,7 @@ python book_translator_gui.pyw
 
 ## 故障排除
 
-- `ModuleNotFoundError`: 使用 `pip install 包名` 安装缺失依赖
+- `ModuleNotFoundError`: 使用 `py -m pip install 包名` 安装缺失依赖，并确认运行命令也使用 `py`
 - API调用失败: 检查API Key、网络、配额/余额；如配额用完会自动切到本地模型
 - PDF读取失败: 部分PDF为图片/特殊编码，可先转换为TXT或使用 pdfplumber
 

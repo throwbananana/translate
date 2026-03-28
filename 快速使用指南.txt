@@ -17,10 +17,10 @@
 ------------------------
 
 步骤1：安装依赖
-  pip install -r requirements.txt
+  py -m pip install -r requirements.txt
 
 步骤2：运行程序
-  python book_translator_gui.pyw
+  py book_translator_gui.pyw
 
 步骤3：测试翻译
   1. 程序启动后，会自动加载预配置的API Key
@@ -112,7 +112,7 @@
 ------------------
 
 方法1：运行测试脚本验证
-  python test_full_workflow.py
+  py test_full_workflow.py
   这会测试完整的翻译流程，并直接保存译文
 
 方法2：检查配置文件
@@ -121,7 +121,7 @@
   确认 gemini.model 是 "gemini-2.5-flash"
 
 方法3：查看控制台
-  用 python book_translator_gui.pyw 运行（不是双击）
+  用 py book_translator_gui.pyw 运行（不是双击）
   查看是否有错误信息
 
 

@@ -10,8 +10,8 @@
 ========================================
 
 步骤 1：启动程序
-  双击运行：启动翻译工具.bat
-  或者：python book_translator_gui.pyw
+  双击运行：start.bat
+  或者：py book_translator_gui.pyw
 
 步骤 2：选择文件
   点击"浏览..."按钮

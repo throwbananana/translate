@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#! python
 # -*- coding: utf-8 -*-
 """
 书籍翻译工具 GUI v2.3
@@ -10,7 +10,7 @@
 v2.3 新增：PDF OCR扫描件支持 (pdfplumber+pdf2image)、可视化术语表编辑、章节目录导航、批量任务断点续传
 
 依赖库:
-pip install PyPDF2 pdfplumber pdf2image ebooklib beautifulsoup4 google-generativeai openai requests python-docx
+py -m pip install PyPDF2 pdfplumber pdf2image ebooklib beautifulsoup4 google-generativeai openai requests python-docx
 """
 
 import tkinter as tk
@@ -3607,7 +3607,7 @@ class BookTranslatorGUI:
 
         # 检查是否安装了 ebooklib
         if not EPUB_SUPPORT:
-            messagebox.showerror("错误", "未安装 ebooklib 库，无法导出 EPUB。\n请运行 pip install ebooklib")
+            messagebox.showerror("错误", "未安装 ebooklib 库，无法导出 EPUB。\n请运行 py -m pip install ebooklib")
             return
 
         # 选择保存路径
@@ -5118,7 +5118,7 @@ def main():
         for lib in missing_libs:
             print(f"  - {lib}")
         print("\n安装命令:")
-        print("pip install PyPDF2 ebooklib beautifulsoup4 google-generativeai openai requests")
+        print("py -m pip install PyPDF2 ebooklib beautifulsoup4 google-generativeai openai requests")
         print("=" * 60)
         print()
 
