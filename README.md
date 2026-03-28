@@ -1,4 +1,4 @@
-# 书籍翻译工具 v2.3
+# 书籍翻译工具 v2.3.1
 
 一个功能完善的GUI工具，支持将PDF、TXT、EPUB格式的书籍翻译成指定语言（默认中文），可接入多种AI翻译API。内置翻译记忆库、术语表管理，并支持智能上下文翻译。
 
@@ -41,20 +41,21 @@ py -m pip install ebooklib beautifulsoup4
 py -m pip install google-generativeai
 ```
 
-## 快速测试（已预配置）
+## 快速测试
 
-为了方便测试，已准备好：
+为了方便测试，仓库提供：
 
-1. 预配置的API Key：`translator_config.json` 默认包含一个示例Gemini API Key
+1. 配置模板：`translator_config.example.json`
 2. 示例文本：`sample_book.txt`
 
 ```bash
 # 1. 运行程序
 py book_translator_gui.pyw
 
-# 2. 点击“浏览...”选择 sample_book.txt
-# 3. 点击“开始翻译”
-# 4. 等待翻译完成后导出
+# 2. 首次运行后，通过“配置API”填写你自己的 API Key
+# 3. 点击“浏览...”选择 sample_book.txt
+# 4. 点击“开始翻译”
+# 5. 等待翻译完成后导出
 ```
 
 ---
@@ -121,7 +122,7 @@ py book_translator_gui.pyw
 3. 可在“API类型”中直接选择本地模式；程序在检测到 API 配额/限流错误时也会自动切换到本地 LM Studio，并在后续段落保持使用本地模型
 4. LM Studio 需要的 `api_key` 仅作占位，可保持 `lm-studio`
 
-> 提示：如需调整本地模型或端口，可修改 `translator_config.json` 的 `lm_studio` 配置后重启程序。
+> 提示：如需调整本地模型或端口，可在“配置API”中修改；若已应用升级补丁，运行态配置默认位于用户目录而不是仓库根目录。
 
 ## 注意事项
 
@@ -139,7 +140,7 @@ py book_translator_gui.pyw
 
 ## 配置文件
 
-程序会在同目录下创建 `translator_config.json` 保存API配置，包含：
+程序默认会把 `translator_config.json` 保存到用户目录，而不是仓库根目录，包含：
 
 ```json
 {
@@ -170,7 +171,25 @@ py book_translator_gui.pyw
 
 旧版配置（无 `api_configs` 包装或无 `target_language`）会自动兼容并在保存时升级。
 
-请妥善保管此文件，避免泄露API Key。
+Windows 默认目录：`%APPDATA%\BookTranslator\translator_config.json`
+
+Linux / macOS 默认目录：`~/.config/book_translator/translator_config.json`
+
+仓库中建议仅保留 `translator_config.example.json` 作为模板。
+
+请妥善保管此文件，避免泄露 API Key、登录凭据和会话 Cookie。
+
+## 在线检索说明
+
+在线检索功能建议仅用于发现元数据和跳转核验，不建议作为默认内置下载链路。
+
+`online_search.py` 中的 Z-Library 集成在升级补丁后默认关闭；只有显式设置环境变量 `TRANSLATE_ENABLE_ZLIBRARY=1` 时才会启用实验逻辑。
+
+如需长期保留该能力，建议至少做到：
+
+- 不将会话 Cookie 落盘
+- 不把高风险站点作为默认镜像探测对象
+- 在 README 和界面中明确声明其为实验功能
 
 ## 故障排除
 
@@ -179,6 +198,12 @@ py book_translator_gui.pyw
 - PDF读取失败: 部分PDF为图片/特殊编码，可先转换为TXT或使用 pdfplumber
 
 ## 更新日志
+### v2.3.1 (2026-03-28)
+- ✅ **版本口径统一**：README / GUI / 启动脚本统一为 `v2.3.1`
+- ✅ **安全优化**：移除 README 中“预配置 API Key”表述，改为模板配置
+- ✅ **风险收敛**：在线搜索模块默认关闭 Z-Library 集成，不再持久化其登录 Cookie
+- ✅ **文档完善**：增加在线检索风险说明和用户目录配置说明
+
 ### v2.3 (2025-12-24)
 - ✅ **PDF 增强**：集成 `pdfplumber` 提升排版识别，新增 `OCR` (Tesseract) 自动回退功能，支持扫描件翻译。
 - ✅ **术语表管理**：新增可视化术语表编辑器，支持增删改查和多表管理。

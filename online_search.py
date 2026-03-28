@@ -1,7 +1,11 @@
 #! python
 # -*- coding: utf-8 -*-
 """
-Online Search Module for Z-Library and Anna's Archive
+Online Search Module (experimental)
+
+Default behavior is conservative:
+- keep metadata lookup support
+- disable Z-Library integration unless explicitly enabled
 """
 
 import os
@@ -39,6 +43,14 @@ class OnlineSearchManager:
     def _get_annas_config(self):
         return self.config_manager.get('online_search.annas_archive', {})
 
+    def _zlibrary_enabled(self) -> bool:
+        """Z-Library 集成默认关闭，只允许显式启用。"""
+        env_value = os.getenv('TRANSLATE_ENABLE_ZLIBRARY')
+        if env_value is not None:
+            return env_value.strip().lower() in {'1', 'true', 'yes', 'on'}
+
+        return bool(self.config_manager.get('online_search.enable_zlibrary', False))
+
     def check_mirrors(self) -> Dict[str, List[Dict]]:
         """
         Check availability and latency of known mirrors.
@@ -75,10 +87,11 @@ class OnlineSearchManager:
             threads.append(t)
             t.start()
             
-        for url in zlib_mirrors:
-            t = threading.Thread(target=check_url, args=(url, results['zlibrary']))
-            threads.append(t)
-            t.start()
+        if self._zlibrary_enabled():
+            for url in zlib_mirrors:
+                t = threading.Thread(target=check_url, args=(url, results['zlibrary']))
+                threads.append(t)
+                t.start()
             
         for t in threads:
             t.join()
@@ -91,6 +104,9 @@ class OnlineSearchManager:
         
     def login_zlibrary(self) -> bool:
         """Login to Z-Library"""
+        if not self._zlibrary_enabled():
+            return False
+
         config = self._get_zlib_config()
         email = config.get('email')
         password = config.get('password')
@@ -109,8 +125,6 @@ class OnlineSearchManager:
             response = self.session.post(login_url, data=data, timeout=20)
             
             if response.status_code == 200 and ('logout' in response.text.lower() or 'profile' in response.text.lower()):
-                cookies = self.session.cookies.get_dict()
-                self.config_manager.set('online_search.zlibrary.cookie', json.dumps(cookies))
                 return True
             return False
         except Exception as e:
@@ -223,6 +237,9 @@ class OnlineSearchManager:
 
     def search_zlibrary(self, query: str, page: int = 1, languages: List[str] = None) -> List[Dict]:
         """Search from Z-Library"""
+        if not self._zlibrary_enabled():
+            return []
+
         config = self._get_zlib_config()
         domain = config.get('domain', 'https://singlelogin.re')
         
@@ -236,13 +253,6 @@ class OnlineSearchManager:
 
         search_url = f"{domain.rstrip('/')}/s/{quote(query)}/?page={page}{lang_param}"
         
-        saved_cookies = config.get('cookie')
-        if saved_cookies:
-            try:
-                self.session.cookies.update(json.loads(saved_cookies))
-            except:
-                pass
-                
         results = []
         try:
             response = self.session.get(search_url, timeout=30)

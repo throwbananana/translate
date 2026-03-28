@@ -1,38 +1,17 @@
-# 书籍翻译工具依赖库 v2.3
+# 书籍翻译工具依赖库
+# 核心依赖
+google-generativeai>=0.3.0
+openai>=1.0.0
+requests>=2.31.0
 
-# ============ 核心依赖 ============
-
-# API 客户端
-google-generativeai>=0.3.0    # Gemini API
-openai>=1.0.0                 # OpenAI / LM Studio / DeepSeek
-requests>=2.31.0              # 自定义 API 调用
-
-# ============ 文件格式支持 ============
-
-# PDF 支持 (增强)
+# 文件格式支持
 PyPDF2>=3.0.0
-pdfplumber>=0.10.0            # 更好的排版保持 (v2.3新增)
-pdf2image>=1.16.0             # 扫描件转图片 (v2.3新增, 需Poppler)
-
-# EPUB 支持
+pdfplumber>=0.10.0
+pdf2image>=1.16.0
 ebooklib>=0.18
 beautifulsoup4>=4.12.0
-
-# DOCX 支持
 python-docx>=0.8.11
 
-# ============ OCR 支持 ============
-
-# 图片文字识别 (扫描件PDF/图片EPUB)
+# OCR 支持
 pytesseract>=0.3.10
 Pillow>=10.0.0
-
-# ============ 可选依赖 ============
-
-# Claude API
-# anthropic>=0.18.0
-
-# ============ 开发依赖 ============
-
-# mypy>=1.0.0
-# black>=23.0.0

@@ -1,7 +1,7 @@
 #! python
 # -*- coding: utf-8 -*-
 """
-书籍翻译工具 GUI v2.3
+书籍翻译工具 GUI v2.3.1
 支持PDF、TXT、EPUB、DOCX、Markdown格式的书籍翻译
 可接入Gemini API、OpenAI API、Claude API、DeepSeek API等多种翻译API
 支持动态添加多个本地模型，翻译与解析功能可独立选择不同API
@@ -102,8 +102,11 @@ DEFAULT_API_CONFIGS = {
     'lm_studio': deepcopy(DEFAULT_LM_STUDIO_CONFIG)
 }
 
+# 应用版本号
+APP_VERSION = "2.3.1"
+
 # 配置文件版本号
-CONFIG_VERSION = "2.3"
+CONFIG_VERSION = APP_VERSION
 
 class GlossaryEditorDialog:
     """术语表编辑器对话框"""
@@ -317,7 +320,7 @@ class BookTranslatorGUI:
 
     def __init__(self, root):
         self.root = root
-        self.root.title("书籍翻译工具 v2.1 - 翻译记忆+术语表+多本地模型")
+        self.root.title(f"书籍翻译工具 v{APP_VERSION} - 翻译记忆+术语表+多本地模型")
         self.root.geometry("950x750")
 
         # 初始化辅助模块

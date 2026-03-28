@@ -13,6 +13,7 @@
 """
 
 import json
+import os
 import shutil
 import base64
 from pathlib import Path
@@ -22,7 +23,7 @@ from copy import deepcopy
 
 
 # 配置版本
-CONFIG_VERSION = "2.1"
+CONFIG_VERSION = "2.3.1"
 
 # 默认配置
 DEFAULT_CONFIG = {
@@ -80,7 +81,8 @@ DEFAULT_CONFIG = {
         'annas_archive': {
             'domain': 'https://annas-archive.li'
         },
-        'download_path': 'downloads'
+        'download_path': 'downloads',
+        'enable_zlibrary': False
     },
     'custom_local_models': {},
     'translation_style': '通俗小说 (Novel)',
@@ -105,19 +107,21 @@ class ConfigManager:
         初始化配置管理器
 
         Args:
-            config_path: 配置文件路径，默认在程序目录下
+            config_path: 配置文件路径，默认在用户配置目录下
             backup_dir: 备份目录，默认 config_backups/
         """
         if config_path is None:
-            config_path = Path(__file__).parent / 'translator_config.json'
+            config_path = self._default_config_path()
 
         self.config_path = Path(config_path)
+        self.legacy_config_path = Path(__file__).parent / 'translator_config.json'
 
         if backup_dir is None:
             backup_dir = self.config_path.parent / 'config_backups'
 
         self.backup_dir = Path(backup_dir)
-        self.backup_dir.mkdir(exist_ok=True)
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        self.backup_dir.mkdir(parents=True, exist_ok=True)
 
         # 当前配置
         self._config: Dict = deepcopy(DEFAULT_CONFIG)
@@ -125,8 +129,58 @@ class ConfigManager:
         # 加密密钥（简单混淆，非安全加密）
         self._key = "book_translator_2024"
 
+        self._migrate_legacy_config()
+
         # 自动加载配置
         self.load()
+
+    @staticmethod
+    def _default_app_dir() -> Path:
+        """返回用户级配置目录，避免把运行态配置提交到仓库。"""
+        if os.name == 'nt':
+            appdata = os.getenv('APPDATA')
+            if appdata:
+                return Path(appdata) / 'BookTranslator'
+            return Path.home() / 'AppData' / 'Roaming' / 'BookTranslator'
+
+        xdg_config_home = os.getenv('XDG_CONFIG_HOME')
+        if xdg_config_home:
+            return Path(xdg_config_home) / 'book_translator'
+
+        return Path.home() / '.config' / 'book_translator'
+
+    @classmethod
+    def _default_config_path(cls) -> Path:
+        return cls._default_app_dir() / 'translator_config.json'
+
+    def _migrate_legacy_config(self):
+        """首次升级时，把仓库目录下的旧配置复制到用户配置目录。"""
+        if self.config_path.exists() or not self.legacy_config_path.exists():
+            return
+
+        try:
+            shutil.copy2(self.legacy_config_path, self.config_path)
+            print(f"ℹ️ 已迁移旧配置到用户目录: {self.config_path}")
+        except Exception as e:
+            print(f"⚠️ 迁移旧配置失败: {e}")
+
+    def _apply_env_overrides(self, config: Dict) -> Dict:
+        """允许通过环境变量覆盖 API Key，避免把敏感信息写入文件。"""
+        env_map = {
+            'gemini': 'GEMINI_API_KEY',
+            'openai': 'OPENAI_API_KEY',
+            'claude': 'ANTHROPIC_API_KEY',
+            'deepseek': 'DEEPSEEK_API_KEY',
+            'custom': 'CUSTOM_API_KEY',
+            'lm_studio': 'LM_STUDIO_API_KEY',
+        }
+
+        for provider, env_name in env_map.items():
+            value = os.getenv(env_name)
+            if value and provider in config.get('api_configs', {}):
+                config['api_configs'][provider]['api_key'] = value
+
+        return config
 
     def _encode_key(self, value: str) -> str:
         """简单编码 API Key（非安全加密，仅防止明文显示）"""
@@ -252,6 +306,7 @@ class ConfigManager:
         """
         try:
             if not self.config_path.exists():
+                self._config = self._apply_env_overrides(deepcopy(DEFAULT_CONFIG))
                 print("ℹ️ 配置文件不存在，使用默认配置")
                 return False
 
@@ -265,7 +320,7 @@ class ConfigManager:
                 print(f"ℹ️ 配置已从 v{loaded_version} 迁移到 v{CONFIG_VERSION}")
 
             # 合并默认值
-            self._config = self._merge_with_defaults(loaded)
+            self._config = self._apply_env_overrides(self._merge_with_defaults(loaded))
 
             print(f"✓ 配置已加载: {self.config_path}")
             return True
@@ -299,6 +354,7 @@ class ConfigManager:
                 self._create_backup()
 
             # 保存配置
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.config_path, 'w', encoding='utf-8') as f:
                 json.dump(self._config, f, indent=2, ensure_ascii=False)
 
