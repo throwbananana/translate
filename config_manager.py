@@ -101,6 +101,20 @@ DEFAULT_CONFIG = {
 }
 
 
+TRANSLATION_RUNTIME_KEYS = (
+    'target_language',
+    'segment_size',
+    'preview_limit',
+    'max_consecutive_failures',
+    'translation_delay',
+    'use_translation_memory',
+    'use_glossary',
+    'translation_style',
+    'concurrency',
+    'context_enabled',
+)
+
+
 class ConfigManager:
     """配置管理器"""
 
@@ -264,6 +278,25 @@ class ConfigManager:
 
         # 设置值
         config[keys[-1]] = value
+
+        if save:
+            self.save()
+
+    def get_translation_runtime_profile(self) -> Dict[str, Any]:
+        """返回翻译运行时配置快照。"""
+        profile: Dict[str, Any] = {}
+        for key in TRANSLATION_RUNTIME_KEYS:
+            profile[key] = deepcopy(self.get(key, DEFAULT_CONFIG.get(key)))
+        return profile
+
+    def update_translation_runtime_profile(self, profile: Dict[str, Any], save: bool = True):
+        """批量更新翻译运行时配置。"""
+        if not profile:
+            return
+
+        for key in TRANSLATION_RUNTIME_KEYS:
+            if key in profile:
+                self.set(key, deepcopy(profile[key]), save=False)
 
         if save:
             self.save()
@@ -565,6 +598,44 @@ class ConfigManager:
         except Exception as e:
             print(f"导入配置失败: {e}")
             return False
+
+    def get_ui_runtime_profile(self) -> Dict:
+        """返回 GUI 运行时会话所需的核心配置快照。"""
+        return {
+            'api_configs': deepcopy(self.get('api_configs', {})),
+            'custom_local_models': deepcopy(self.get('custom_local_models', {})),
+            'target_language': self.get('target_language', DEFAULT_CONFIG['target_language']),
+            'selected_translation_api': self.get('selected_translation_api', DEFAULT_CONFIG['selected_translation_api']),
+            'selected_analysis_api': self.get('selected_analysis_api', DEFAULT_CONFIG['selected_analysis_api']),
+            'selected_retry_api': self.get('selected_retry_api', DEFAULT_CONFIG['selected_retry_api']),
+        }
+
+    def update_ui_runtime_profile(
+        self,
+        *,
+        api_configs: Optional[Dict] = None,
+        custom_local_models: Optional[Dict] = None,
+        target_language: Optional[str] = None,
+        selected_translation_api: Optional[str] = None,
+        selected_analysis_api: Optional[str] = None,
+        selected_retry_api: Optional[str] = None,
+        create_backup: bool = True,
+    ) -> bool:
+        """批量更新 GUI 运行时配置，减少界面层逐项 set/save。"""
+        updates = {
+            'api_configs': api_configs,
+            'custom_local_models': custom_local_models,
+            'target_language': target_language,
+            'selected_translation_api': selected_translation_api,
+            'selected_analysis_api': selected_analysis_api,
+            'selected_retry_api': selected_retry_api,
+        }
+
+        for key, value in updates.items():
+            if value is not None:
+                self.set(key, deepcopy(value), save=False)
+
+        return self.save(create_backup=create_backup)
 
     def get_all(self) -> Dict:
         """获取完整配置（副本）"""

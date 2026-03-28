@@ -1,0 +1,29 @@
+Combined upgrade series package
+
+Included patches:
+- 0000-cover-letter-upgrade-series.patch
+- 0005-unify-runtime-data-paths.patch
+- 0006-stabilize-docx-handler.patch
+- 0007-harden-test-suite.patch
+- 0008-extract-runtime-state-store.patch
+- 0009-centralize-config-runtime-profile.patch
+- 0010-centralize-translation-runtime-profile.patch
+- 0011-centralize-engine-runtime-sync.patch
+- 0012-extract-batch-translation-executor.patch
+- 0013-extract-failed-segment-manager.patch
+- 0014-extract-retry-failed-segment-service.patch
+- 0015-extract-failed-segment-panel.patch
+- 0016-extract-retry-api-resolver.patch
+- 0017-extract-failed-segment-actions.patch
+- 0018-extract-failed-segment-controller.patch
+- 0019-extract-failed-segment-feature.patch
+
+Note on numbering:
+- This combined package follows the requested 0000-0019 range.
+- In the generated upgrade series, numbers 0001-0004 are intentionally absent because they belong to the repository's earlier upstream mailbox-style patch set.
+- The repository README describes 0001-0004 as earlier review artifacts, and commit 0ba1df4 shows those files being deleted from the repository after their changes were folded into the main tree.
+
+Recommended use:
+1. Check each patch or the combined mbox on a topic branch.
+2. Prefer git apply --check before applying.
+3. Use APPLY-ORDER-upgrade-series.md for staged application.

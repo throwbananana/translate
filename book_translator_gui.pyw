@@ -27,7 +27,6 @@ import shutil
 from copy import deepcopy
 import hashlib
 import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 文件读取相关
 try:
@@ -70,15 +69,26 @@ except ImportError:
     REQUESTS_SUPPORT = False
 
 from file_processor import FileProcessor
-from app_paths import get_runtime_file
-from config_manager import ConfigManager, get_config_manager
+from runtime_state import RuntimeStateStore
+from config_manager import ConfigManager, DEFAULT_CONFIG, get_config_manager
+from retry_api_resolver import (
+    choose_retry_api_name,
+    map_api_name_to_key,
+    validate_retry_api_selection,
+)
 from translation_memory import TranslationMemory, get_translation_memory
 from glossary_manager import GlossaryManager, get_glossary_manager
 from online_search import OnlineSearchManager
-from translation_engine import TranslationEngine, APIConfig, APIProvider
+from translation_engine import (
+    TranslationEngine,
+    apply_runtime_config,
+    build_api_config,
+    resolve_provider_token,
+)
 from cost_estimator import CostEstimator
 from docx_handler import DocxHandler
 from audio_manager import AudioManager
+from batch_translation_executor import BatchTranslationExecutor
 from smart_glossary import SmartGlossaryExtractor
 from book_hunter import BookHunter
 from web_importer import WebImporter
@@ -86,22 +96,25 @@ from tm_editor import TMEditorDialog
 from format_converter import FormatConverterDialog
 from cloud_upload import CloudUploader
 from community_manager import CommunityManager
+from retry_failed_segment_service import RetryFailedSegmentService
+from failed_segment_actions import FailedSegmentActions
+from failed_segment_controller import FailedSegmentController
+from failed_segment_feature import FailedSegmentFeature
+from failed_segment_panel import FailedSegmentPanel
 
-DEFAULT_TARGET_LANGUAGE = "中文"
-DEFAULT_LM_STUDIO_CONFIG = {
-    'api_key': 'lm-studio',
-    'model': 'qwen2.5-7b-instruct-1m',
-    'base_url': 'http://127.0.0.1:1234/v1'
-}
+DEFAULT_TARGET_LANGUAGE = DEFAULT_CONFIG.get('target_language', "中文")
+DEFAULT_LM_STUDIO_CONFIG = deepcopy(
+    DEFAULT_CONFIG.get('api_configs', {}).get('lm_studio', {
+        'api_key': 'lm-studio',
+        'model': 'qwen2.5-7b-instruct-1m',
+        'base_url': 'http://127.0.0.1:1234/v1'
+    })
+)
 
-DEFAULT_API_CONFIGS = {
-    'gemini': {'api_key': '', 'model': 'gemini-2.5-flash'},
-    'openai': {'api_key': '', 'model': 'gpt-3.5-turbo', 'base_url': ''},
-    'claude': {'api_key': '', 'model': 'claude-3-haiku-20240307'},
-    'deepseek': {'api_key': '', 'model': 'deepseek-chat', 'base_url': 'https://api.deepseek.com/v1'},
-    'custom': {'api_key': '', 'model': '', 'base_url': ''},
-    'lm_studio': deepcopy(DEFAULT_LM_STUDIO_CONFIG)
-}
+DEFAULT_API_CONFIGS = deepcopy(DEFAULT_CONFIG.get('api_configs', {}))
+DEFAULT_SELECTED_TRANSLATION_API = DEFAULT_CONFIG.get('selected_translation_api', 'Gemini API')
+DEFAULT_SELECTED_ANALYSIS_API = DEFAULT_CONFIG.get('selected_analysis_api', 'Gemini API')
+DEFAULT_SELECTED_RETRY_API = DEFAULT_CONFIG.get('selected_retry_api', '本地 LM Studio')
 
 # 应用版本号
 APP_VERSION = "2.3.1"
@@ -327,11 +340,21 @@ class BookTranslatorGUI:
         # 初始化辅助模块
         self.file_processor = FileProcessor()
         self.web_importer = WebImporter()
-        self.progress_cache_path = get_runtime_file('translation_cache.json')
-        self.batch_queue_path = get_runtime_file('batch_tasks.json')
+        self.runtime_state = RuntimeStateStore()
 
         # 初始化新模块
         self.config_manager = get_config_manager()
+        runtime_profile = self.config_manager.get_translation_runtime_profile()
+        self.segment_size = int(runtime_profile.get('segment_size', 800) or 800)
+        self.preview_limit = int(runtime_profile.get('preview_limit', 10000) or 10000)
+        self.max_consecutive_failures = int(runtime_profile.get('max_consecutive_failures', 3) or 3)
+        self.translation_delay = float(runtime_profile.get('translation_delay', 0.5) or 0.5)
+        self.use_translation_memory = bool(runtime_profile.get('use_translation_memory', True))
+        self.use_glossary = bool(runtime_profile.get('use_glossary', True))
+        self.context_enabled = bool(runtime_profile.get('context_enabled', True))
+        self.saved_translation_style = runtime_profile.get('translation_style', '通俗小说 (Novel)')
+        self.saved_target_language = runtime_profile.get('target_language', DEFAULT_TARGET_LANGUAGE)
+        self.saved_concurrency = int(runtime_profile.get('concurrency', 1) or 1)
         self.translation_memory = get_translation_memory()
         self.glossary_manager = get_glossary_manager()
         self.online_search_manager = OnlineSearchManager(self.config_manager)
@@ -366,13 +389,11 @@ class BookTranslatorGUI:
         # 进度缓存/恢复控制
         self.text_signature = None
         self.resume_from_index = 0
-        self.max_consecutive_failures = 3
         self.consecutive_failures = 0
         self.paused_due_to_failures = False
 
         # 大文件处理
         self.show_full_text = False
-        self.preview_limit = 10000  # 预览显示前10000字符
 
         # 批量处理状态
         self.batch_queue = []
@@ -387,30 +408,34 @@ class BookTranslatorGUI:
         # API配置
         self.api_configs = deepcopy(DEFAULT_API_CONFIGS)
         self.custom_local_models = {}  # 自定义本地模型存储
-        self.target_language_var = tk.StringVar(value=DEFAULT_TARGET_LANGUAGE)
+        self.target_language_var = tk.StringVar(value=self.saved_target_language or DEFAULT_TARGET_LANGUAGE)
 
         # 独立的翻译和解析API选择
-        self.translation_api_var = tk.StringVar(value="Gemini API")
-        self.analysis_api_var = tk.StringVar(value="Gemini API")
-        retry_default_api = "本地 LM Studio" if OPENAI_SUPPORT else "Gemini API"
+        self.translation_api_var = tk.StringVar(value=DEFAULT_SELECTED_TRANSLATION_API)
+        self.analysis_api_var = tk.StringVar(value=DEFAULT_SELECTED_ANALYSIS_API)
+        retry_default_api = DEFAULT_SELECTED_RETRY_API if OPENAI_SUPPORT else DEFAULT_SELECTED_TRANSLATION_API
         self.retry_api_var = tk.StringVar(value=retry_default_api)
 
         # 解析相关状态
         self.analysis_segments = []  # 每段的解析结果
         self.is_analyzing = False
         self.analysis_thread = None
+        self.retry_failed_segment_service = RetryFailedSegmentService()
+        self.failed_segment_actions = FailedSegmentActions(self)
+        self.failed_segment_feature = FailedSegmentFeature(self)
 
         self.setup_ui()
+        self.failed_segment_controller = FailedSegmentController(self, getattr(self, 'failed_panel', None))
+        self.failed_segment_feature.attach_actions(self.failed_segment_actions)
+        self.failed_segment_feature.attach_controller(self.failed_segment_controller)
+        self.failed_segment_feature.attach_panel(getattr(self, 'failed_panel', None))
         self.load_config()
         self.try_resume_cached_progress()
 
     def load_batch_queue(self):
         """加载批量任务列表"""
         try:
-            path = self.batch_queue_path
-            if path.exists():
-                with open(path, 'r', encoding='utf-8') as f:
-                    self.batch_queue = json.load(f)
+            self.batch_queue = self.runtime_state.load_batch_queue()
         except Exception as e:
             print(f"Failed to load batch queue: {e}")
             self.batch_queue = []
@@ -418,9 +443,7 @@ class BookTranslatorGUI:
     def save_batch_queue(self):
         """保存批量任务列表"""
         try:
-            self.batch_queue_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.batch_queue_path, 'w', encoding='utf-8') as f:
-                json.dump(self.batch_queue, f, ensure_ascii=False, indent=2)
+            self.runtime_state.save_batch_queue(self.batch_queue)
         except Exception as e:
             print(f"Failed to save batch queue: {e}")
 
@@ -579,7 +602,7 @@ class BookTranslatorGUI:
 
         # 新增：翻译风格
         ttk.Label(api_frame, text="翻译风格:").grid(row=5, column=0, sticky=tk.W, pady=(5, 0))
-        self.style_var = tk.StringVar(value=self.config_manager.get('translation_style', '通俗小说 (Novel)'))
+        self.style_var = tk.StringVar(value=self.saved_translation_style)
         style_options = ["直译 (Literal)", "通俗小说 (Novel)", "学术专业 (Academic)", "武侠/古风 (Wuxia)", "新闻/媒体 (News)"]
         style_combo = ttk.Combobox(
             api_frame,
@@ -596,7 +619,7 @@ class BookTranslatorGUI:
         concurrency_frame = ttk.Frame(api_frame)
         concurrency_frame.grid(row=6, column=1, columnspan=2, sticky=tk.W, pady=(5, 0))
         
-        self.concurrency_var = tk.IntVar(value=self.config_manager.get('concurrency', 1))
+        self.concurrency_var = tk.IntVar(value=self.saved_concurrency)
         self.concurrency_scale = tk.Scale(
             concurrency_frame, 
             from_=1, to=10, 
@@ -678,69 +701,28 @@ class BookTranslatorGUI:
         self.setup_comparison_tab()
 
         # 失败段落标签页
-        failed_frame = ttk.Frame(self.notebook)
-        self.notebook.add(failed_frame, text="失败段落")
-        failed_frame.columnconfigure(1, weight=1)
-        failed_frame.rowconfigure(1, weight=1)
-        failed_frame.rowconfigure(3, weight=1)
-
-
-        ttk.Label(
-            failed_frame,
-            text="检测到的失败/未完成段落，可重试或手动翻译后替换。",
-            foreground="gray"
-        ).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 5))
-
-        self.failed_listbox = tk.Listbox(failed_frame, height=8)
-        self.failed_listbox.grid(row=1, column=0, sticky=(tk.N, tk.S, tk.W), padx=(0, 10))
-        self.failed_listbox.bind('<<ListboxSelect>>', self.on_failed_select)
-
-        detail_frame = ttk.Frame(failed_frame)
-        detail_frame.grid(row=1, column=1, sticky=(tk.N, tk.S, tk.E, tk.W))
-        detail_frame.columnconfigure(0, weight=1)
-        detail_frame.rowconfigure(1, weight=1)
-        detail_frame.rowconfigure(3, weight=1)
-
-        ttk.Label(detail_frame, text="原文（只读）").grid(row=0, column=0, sticky=tk.W)
-        self.failed_source_text = scrolledtext.ScrolledText(
-            detail_frame, wrap=tk.WORD, height=6, state='disabled'
+        preferred_retry = choose_retry_api_name(
+            api_names,
+            current_retry=self.retry_api_var.get(),
+            translation_api_name=self.translation_api_var.get(),
         )
-        self.failed_source_text.grid(row=1, column=0, sticky=(tk.N, tk.S, tk.E, tk.W), pady=(0, 5))
-
-        ttk.Label(detail_frame, text="手动翻译").grid(row=2, column=0, sticky=tk.W)
-        self.manual_translation_text = scrolledtext.ScrolledText(
-            detail_frame, wrap=tk.WORD, height=6
-        )
-        self.manual_translation_text.grid(row=3, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
-
-        if self.retry_api_var.get() not in api_names and api_names:
-            preferred_retry = "本地 LM Studio" if "本地 LM Studio" in api_names else self.translation_api_var.get()
-            if preferred_retry not in api_names:
-                preferred_retry = api_names[0]
+        if preferred_retry != self.retry_api_var.get():
             self.retry_api_var.set(preferred_retry)
 
-        retry_api_frame = ttk.Frame(detail_frame)
-        retry_api_frame.grid(row=4, column=0, sticky=tk.W, pady=(5, 0))
-        ttk.Label(retry_api_frame, text="重试API:").pack(side=tk.LEFT)
-        self.retry_api_combo = ttk.Combobox(
-            retry_api_frame,
-            textvariable=self.retry_api_var,
-            values=api_names,
-            state='readonly',
-            width=22
+        self.failed_panel = FailedSegmentPanel(
+            parent_notebook=self.notebook,
+            retry_api_var=self.retry_api_var,
+            api_names=api_names,
+            on_select=self.on_failed_select,
+            on_retry=self.retry_failed_segment,
+            on_save_manual=self.save_manual_translation,
+            on_open_retry_api=lambda: self.open_api_config_for('retry'),
         )
-        self.retry_api_combo.pack(side=tk.LEFT, padx=5)
-        ttk.Button(retry_api_frame, text="配置", command=lambda: self.open_api_config_for('retry')).pack(side=tk.LEFT)
-
-        button_frame = ttk.Frame(detail_frame)
-        button_frame.grid(row=5, column=0, sticky=tk.E, pady=(5, 0))
-        ttk.Button(button_frame, text="重试翻译", command=self.retry_failed_segment).grid(row=0, column=0, padx=5)
-        ttk.Button(button_frame, text="保存手动翻译", command=self.save_manual_translation).grid(row=0, column=1, padx=5)
-
-        self.failed_status_var = tk.StringVar(value="暂无失败段落")
-        ttk.Label(failed_frame, textvariable=self.failed_status_var).grid(
-            row=2, column=0, columnspan=3, sticky=tk.W, pady=(5, 0)
-        )
+        self.failed_listbox = self.failed_panel.failed_listbox
+        self.failed_source_text = self.failed_panel.failed_source_text
+        self.manual_translation_text = self.failed_panel.manual_translation_text
+        self.retry_api_combo = self.failed_panel.retry_api_combo
+        self.failed_status_var = self.failed_panel.failed_status_var
 
         # 解析标签页
         analysis_frame = ttk.Frame(self.notebook)
@@ -1496,30 +1478,26 @@ class BookTranslatorGUI:
                 'target_language': self.get_target_language(),
                 'resume_from_index': len(self.translated_segments)
             }
-            self.progress_cache_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(self.progress_cache_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, ensure_ascii=False)
+            self.runtime_state.save_progress(data)
         except Exception as e:
             print(f"保存进度缓存失败: {e}")
 
     def clear_progress_cache(self):
         """清除翻译进度缓存"""
         try:
-            if self.progress_cache_path.exists():
-                self.progress_cache_path.unlink()
+            self.runtime_state.clear_progress()
         except Exception as e:
             print(f"清除进度缓存失败: {e}")
 
     def try_resume_cached_progress(self):
         """启动时检查并询问是否恢复未完成进度"""
-        if not self.progress_cache_path.exists():
-            return
-
         try:
-            with open(self.progress_cache_path, 'r', encoding='utf-8') as f:
-                cache = json.load(f)
+            cache = self.runtime_state.load_progress()
         except Exception as e:
             print(f"读取进度缓存失败: {e}")
+            return
+
+        if not cache:
             return
 
         file_path = cache.get('file_path')
@@ -1967,23 +1945,16 @@ class BookTranslatorGUI:
             try:
                 # 使用 TranslationEngine 的测试功能
                 test_engine = TranslationEngine()
-                
-                provider_enum = APIProvider.GEMINI
-                if api_type == 'gemini': provider_enum = APIProvider.GEMINI
-                elif api_type == 'openai': provider_enum = APIProvider.OPENAI
-                elif api_type == 'claude': provider_enum = APIProvider.CLAUDE
-                elif api_type == 'deepseek': provider_enum = APIProvider.DEEPSEEK
-                elif api_type == 'lm_studio': provider_enum = APIProvider.LM_STUDIO
-                elif api_type == 'custom': provider_enum = APIProvider.CUSTOM
-                
-                test_engine.add_api_config(api_type, APIConfig(
-                    provider=provider_enum,
-                    api_key=test_api_key,
-                    model=test_model,
-                    base_url=base_url_var.get().strip(),
-                    temperature=0.2
-                ))
-                
+                test_api_config = build_api_config(api_type, {
+                    'api_key': test_api_key,
+                    'model': test_model,
+                    'base_url': base_url_var.get().strip(),
+                    'temperature': 0.2,
+                })
+                if test_api_config is None:
+                    raise ValueError("请先配置有效的 API Key")
+
+                test_engine.add_api_config(api_type, test_api_config)
                 success, msg = test_engine.test_connection(api_type)
                 
                 if success:
@@ -2130,36 +2101,45 @@ class BookTranslatorGUI:
                 self.analysis_api_var.set(api_names[0])
 
         if hasattr(self, 'retry_api_combo'):
-            current_retry = self.retry_api_var.get()
             self.retry_api_combo['values'] = api_names
-            if current_retry not in api_names and api_names:
-                preferred_retry = "本地 LM Studio" if "本地 LM Studio" in api_names else self.translation_api_var.get()
-                if preferred_retry not in api_names:
-                    preferred_retry = api_names[0]
+            preferred_retry = choose_retry_api_name(
+                api_names,
+                current_retry=self.retry_api_var.get(),
+                translation_api_name=self.translation_api_var.get(),
+            )
+            if preferred_retry != self.retry_api_var.get():
                 self.retry_api_var.set(preferred_retry)
+        if hasattr(self, 'failed_segment_feature'):
+            self.failed_segment_feature.update_retry_api_names(api_names)
 
     def _map_api_name_to_key(self, api_name):
         """将显示名称映射到API键"""
-        if not api_name:
-            return "gemini"
+        return map_api_name_to_key(api_name, self.custom_local_models)
 
-        # 检查是否为自定义本地模型
-        if api_name.startswith("[本地] "):
-            display_name = api_name[5:]  # 去掉"[本地] "前缀
-            for key, config in self.custom_local_models.items():
-                if config.get('display_name') == display_name:
-                    return key
+    def ensure_retry_api_ready(self):
+        """验证失败段重试 API 是否可用；必要时引导用户完成配置。"""
+        result = validate_retry_api_selection(
+            api_name=self.retry_api_var.get(),
+            api_configs=self.api_configs,
+            custom_local_models=self.custom_local_models,
+            openai_support=OPENAI_SUPPORT,
+        )
 
-        # 内置API映射
-        api_map = {
-            "Gemini API": "gemini",
-            "OpenAI API": "openai",
-            "Claude API": "claude",
-            "DeepSeek API": "deepseek",
-            "本地 LM Studio": "lm_studio",
-            "自定义API": "custom"
-        }
-        return api_map.get(api_name, "gemini")
+        if result.is_ready:
+            return result.api_type
+
+        if result.error_message:
+            if result.requires_user_action:
+                messagebox.showwarning("警告", result.error_message)
+            else:
+                messagebox.showerror("错误", result.error_message)
+
+        if result.edit_local_model:
+            self.open_edit_local_model_dialog(result.api_type)
+        elif result.open_api_config:
+            self.open_api_config(result.api_type)
+
+        return None
 
     def get_translation_api_type(self):
         """获取当前选择的翻译API类型"""
@@ -2176,16 +2156,64 @@ class BookTranslatorGUI:
         api_name = self.retry_api_var.get()
         return self._map_api_name_to_key(api_name)
 
+    def _build_runtime_profile_payload(self):
+        """构建当前 GUI 需要持久化的配置快照。"""
+        return {
+            'api_configs': deepcopy(self.api_configs),
+            'custom_local_models': deepcopy(self.custom_local_models),
+            'target_language': self.get_target_language(),
+            'selected_translation_api': self.translation_api_var.get(),
+            'selected_analysis_api': self.analysis_api_var.get(),
+            'selected_retry_api': self.retry_api_var.get(),
+        }
+
+    def _apply_runtime_profile(self, profile):
+        """将配置管理器中的运行时快照应用回 GUI 状态。"""
+        profile = profile or {}
+        self.merge_api_configs(profile.get('api_configs', {}))
+        self.custom_local_models = profile.get('custom_local_models', {})
+
+        target_language = profile.get('target_language', DEFAULT_TARGET_LANGUAGE)
+        self.target_language_var.set(target_language or DEFAULT_TARGET_LANGUAGE)
+
+        saved_trans_api = profile.get('selected_translation_api', DEFAULT_SELECTED_TRANSLATION_API)
+        saved_analysis_api = profile.get('selected_analysis_api', DEFAULT_SELECTED_ANALYSIS_API)
+        saved_retry_api = profile.get('selected_retry_api')
+        self.translation_api_var.set(saved_trans_api)
+        self.analysis_api_var.set(saved_analysis_api)
+
+        default_retry_api = DEFAULT_SELECTED_RETRY_API if OPENAI_SUPPORT else saved_trans_api
+        self.retry_api_var.set(saved_retry_api or default_retry_api)
+
     def save_config(self, show_message=False):
         """保存配置到用户配置目录。"""
         try:
-            self.config_manager.set('api_configs', deepcopy(self.api_configs), save=False)
-            self.config_manager.set('custom_local_models', deepcopy(self.custom_local_models), save=False)
-            self.config_manager.set('target_language', self.get_target_language(), save=False)
-            self.config_manager.set('selected_translation_api', self.translation_api_var.get(), save=False)
-            self.config_manager.set('selected_analysis_api', self.analysis_api_var.get(), save=False)
-            self.config_manager.set('selected_retry_api', self.retry_api_var.get(), save=False)
-            self.config_manager.save(create_backup=True)
+            translation_profile = {
+                'target_language': self.get_target_language(),
+                'translation_style': self.style_var.get() if hasattr(self, 'style_var') else self.saved_translation_style,
+                'concurrency': self.concurrency_var.get() if hasattr(self, 'concurrency_var') else self.saved_concurrency,
+                'segment_size': self.segment_size,
+                'preview_limit': self.preview_limit,
+                'max_consecutive_failures': self.max_consecutive_failures,
+                'translation_delay': self.translation_delay,
+                'use_translation_memory': self.use_translation_memory,
+                'use_glossary': self.use_glossary,
+                'context_enabled': self.context_enabled,
+            }
+            self.config_manager.update_translation_runtime_profile(translation_profile, save=False)
+
+            payload = self._build_runtime_profile_payload()
+            success = self.config_manager.update_ui_runtime_profile(
+                api_configs=payload['api_configs'],
+                custom_local_models=payload['custom_local_models'],
+                target_language=payload['target_language'],
+                selected_translation_api=payload['selected_translation_api'],
+                selected_analysis_api=payload['selected_analysis_api'],
+                selected_retry_api=payload['selected_retry_api'],
+                create_backup=True,
+            )
+            if not success:
+                raise RuntimeError('ConfigManager.save returned False')
 
             if show_message:
                 print(f"✓ 配置已自动保存: {self.config_manager.config_path}")
@@ -2205,21 +2233,24 @@ class BookTranslatorGUI:
     def load_config(self):
         """从用户配置目录加载配置。"""
         try:
-            loaded_config = self.config_manager.get_all()
-            api_config_section = loaded_config.get('api_configs', {})
-            self.merge_api_configs(api_config_section)
+            runtime_profile = self.config_manager.get_translation_runtime_profile()
+            self.segment_size = int(runtime_profile.get('segment_size', 800) or 800)
+            self.preview_limit = int(runtime_profile.get('preview_limit', 10000) or 10000)
+            self.max_consecutive_failures = int(runtime_profile.get('max_consecutive_failures', 3) or 3)
+            self.translation_delay = float(runtime_profile.get('translation_delay', 0.5) or 0.5)
+            self.use_translation_memory = bool(runtime_profile.get('use_translation_memory', True))
+            self.use_glossary = bool(runtime_profile.get('use_glossary', True))
+            self.context_enabled = bool(runtime_profile.get('context_enabled', True))
+            self.saved_translation_style = runtime_profile.get('translation_style', '通俗小说 (Novel)')
+            self.saved_concurrency = int(runtime_profile.get('concurrency', 1) or 1)
 
-            self.custom_local_models = loaded_config.get('custom_local_models', {})
-            target_language = loaded_config.get('target_language', DEFAULT_TARGET_LANGUAGE)
-            self.target_language_var.set(target_language or DEFAULT_TARGET_LANGUAGE)
+            self._apply_runtime_profile(self.config_manager.get_ui_runtime_profile())
 
-            saved_trans_api = loaded_config.get('selected_translation_api', 'Gemini API')
-            saved_analysis_api = loaded_config.get('selected_analysis_api', 'Gemini API')
-            saved_retry_api = loaded_config.get('selected_retry_api')
-            self.translation_api_var.set(saved_trans_api)
-            self.analysis_api_var.set(saved_analysis_api)
-            default_retry_api = "本地 LM Studio" if OPENAI_SUPPORT else saved_trans_api
-            self.retry_api_var.set(saved_retry_api or default_retry_api)
+            if hasattr(self, 'style_var'):
+                self.style_var.set(self.saved_translation_style)
+            if hasattr(self, 'concurrency_var'):
+                self.concurrency_var.set(self.saved_concurrency)
+                self.update_concurrency_label(self.saved_concurrency)
 
             self.update_api_status()
             self.refresh_api_dropdowns()
@@ -2344,47 +2375,12 @@ class BookTranslatorGUI:
 
     def sync_engine_config(self):
         """同步配置到翻译引擎"""
-        # 清除旧配置
-        self.translation_engine.api_configs.clear()
-        self.translation_engine.custom_local_models.clear()
-        
-        # 同步内置API配置
-        for name, cfg in self.api_configs.items():
-            if not cfg.get('api_key'):
-                continue
-                
-            provider = APIProvider.GEMINI
-            if name == 'gemini': provider = APIProvider.GEMINI
-            elif name == 'openai': provider = APIProvider.OPENAI
-            elif name == 'claude': provider = APIProvider.CLAUDE
-            elif name == 'deepseek': provider = APIProvider.DEEPSEEK
-            elif name == 'lm_studio': provider = APIProvider.LM_STUDIO
-            elif name == 'custom': provider = APIProvider.CUSTOM
-            
-            self.translation_engine.add_api_config(name, APIConfig(
-                provider=provider,
-                api_key=cfg.get('api_key', ''),
-                model=cfg.get('model', ''),
-                base_url=cfg.get('base_url', ''),
-                temperature=cfg.get('temperature', 0.2)
-            ))
-            
-        # 同步自定义本地模型
-        for name, cfg in self.custom_local_models.items():
-            self.translation_engine.add_custom_local_model(
-                name=name,
-                display_name=cfg.get('display_name', name),
-                base_url=cfg.get('base_url', ''),
-                model_id=cfg.get('model_id', ''),
-                api_key=cfg.get('api_key', 'lm-studio')
-            )
-            
-        # 设置回退逻辑
-        if 'lm_studio' in self.api_configs and self.api_configs['lm_studio'].get('api_key'):
-            self.translation_engine.set_fallback_provider('lm_studio')
-        elif self.custom_local_models:
-            first_local = list(self.custom_local_models.keys())[0]
-            self.translation_engine.set_fallback_provider(first_local)
+        apply_runtime_config(
+            self.translation_engine,
+            self.api_configs,
+            self.custom_local_models,
+            clear_existing=True,
+        )
 
     def translate_text(self):
         """执行翻译（在后台线程中，支持并发）"""
@@ -2400,7 +2396,7 @@ class BookTranslatorGUI:
             self.root.after(0, self.progress_text_var.set, "正在进行文本分段...")
 
             # 使用 FileProcessor 进行分段
-            self.source_segments = self.file_processor.split_text_into_segments(self.current_text, max_length=800)
+            self.source_segments = self.file_processor.split_text_into_segments(self.current_text, max_length=self.segment_size)
             total_segments = len(self.source_segments)
             self.text_signature = self.compute_text_signature(self.current_text)
             start_index = min(self.resume_from_index or 0, total_segments)
@@ -2426,107 +2422,51 @@ class BookTranslatorGUI:
             max_workers = self.concurrency_var.get()
             remaining_segments = max(total_segments - start_index, 0)
             max_workers = max(1, min(max_workers, remaining_segments or 1))
-            use_context = max_workers == 1  # 只有单线程模式才启用上下文
-            
-            # 定义单个任务函数
-            def process_segment(idx):
-                if not self.is_translating or self.paused_due_to_failures:
-                    return None
-                    
-                segment = self.source_segments[idx]
-                
-                # 获取上下文（仅单线程有效）
-                context = None
-                if use_context and idx > 0:
-                    prev_trans = self.translated_segments[idx-1]
-                    # 确保前一段已翻译且不是错误信息
-                    if prev_trans and not prev_trans.startswith("["):
-                        context = prev_trans
-
-                try:
-                    result = self.translate_segment(api_type, segment, context)
-                    return (idx, result, None)
-                except Exception as e:
-                    return (idx, None, str(e))
-
-            # 执行翻译循环
             if max_workers > 1:
-                # 并发模式
                 self.root.after(0, self.progress_text_var.set, f"正在并发翻译 (线程数: {max_workers})...")
-                
-                with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                    # 创建剩余任务
-                    futures = {
-                        executor.submit(process_segment, i): i 
-                        for i in range(start_index, total_segments)
-                    }
-                    
-                    completed_count = start_index
-                    for future in as_completed(futures):
-                        if not self.is_translating or self.paused_due_to_failures:
-                            executor.shutdown(wait=False, cancel_futures=True)
-                            break
-                            
-                        try:
-                            idx, result, error = future.result()
-                        except Exception as e:
-                            idx = futures[future]
-                            result = None
-                            error = str(e)
-                        
-                        if result:
-                            self.translated_segments[idx] = result
-                            self.consecutive_failures = 0
-                        else:
-                            self.consecutive_failures += 1
-                            self.translated_segments[idx] = f"[翻译错误: {error}]\n{self.source_segments[idx]}"
-                            print(f"翻译段落 {idx + 1} 失败: {error}")
-                            
-                            if self.consecutive_failures >= self.max_consecutive_failures:
-                                self.paused_due_to_failures = True
-                                self.resume_from_index = idx  # 记录暂停位置（大概）
-                        
-                        completed_count += 1
-                        progress = (completed_count / total_segments) * 100
-                        self.root.after(0, self.progress_var.set, progress)
-                        self.root.after(0, self.progress_text_var.set, f"正在翻译... {completed_count}/{total_segments} 段")
-                        
-                        # 定期保存和更新UI (不必每段都更新，减少开销)
-                        if completed_count % 5 == 0:
-                            self.save_progress_cache()
-                            current_text = "\n\n".join(seg for seg in self.translated_segments if seg)
-                            self.root.after(0, self.update_translated_text, current_text)
-            else:
-                # 单线程模式 (保持原逻辑以支持上下文)
-                for idx in range(start_index, total_segments):
-                    if not self.is_translating:
-                        break
-                    
-                    # 重新调用 process_segment 逻辑
-                    _, result, error = process_segment(idx)
-                    
-                    if result:
-                        self.translated_segments[idx] = result
-                        self.consecutive_failures = 0
-                    else:
-                        self.consecutive_failures += 1
-                        self.translated_segments[idx] = f"[翻译错误: {error}]\n{self.source_segments[idx]}"
-                        
-                        if self.consecutive_failures >= self.max_consecutive_failures:
-                            self.paused_due_to_failures = True
-                            self.resume_from_index = idx
-                            break
-                    
-                    progress = ((idx + 1) / total_segments) * 100
-                    self.root.after(0, self.progress_var.set, progress)
-                    self.root.after(0, self.progress_text_var.set, f"正在翻译... {idx + 1}/{total_segments} 段")
-                    
-                    # 实时更新
-                    self.translated_text = "\n\n".join(self.translated_segments[:idx+1])
-                    self.root.after(0, self.update_translated_text, self.translated_text)
-                    self.save_progress_cache()
-                    
-                    time.sleep(0.2) # 避免单线程下的API限流
+
+            checkpoint_every = 1 if max_workers == 1 else 5
+
+            def _translate_segment(idx, segment, context):
+                return self.translate_segment(api_type, segment, context)
+
+            def _on_progress(completed_count, total_count):
+                progress = (completed_count / total_count) * 100 if total_count else 0
+                self.root.after(0, self.progress_var.set, progress)
+                self.root.after(0, self.progress_text_var.set, f"正在翻译... {completed_count}/{total_count} 段")
+
+            def _on_checkpoint(translated_segments, completed_count):
+                self.translated_segments = list(translated_segments)
+                self.translated_text = "\n\n".join(seg for seg in self.translated_segments if seg)
+                self.save_progress_cache()
+                self.root.after(0, self.update_translated_text, self.translated_text)
+
+            def _on_error(idx, error_text):
+                print(f"翻译段落 {idx + 1} 失败: {error_text}")
+
+            executor = BatchTranslationExecutor(
+                source_segments=self.source_segments,
+                translated_segments=self.translated_segments,
+                start_index=start_index,
+                max_workers=max_workers,
+                max_consecutive_failures=self.max_consecutive_failures,
+                delay_seconds=self.translation_delay,
+                checkpoint_every=checkpoint_every,
+                use_context=self.context_enabled and max_workers == 1,
+                should_continue=lambda: self.is_translating,
+                translate_segment=_translate_segment,
+                on_progress=_on_progress,
+                on_checkpoint=_on_checkpoint,
+                on_error=_on_error,
+            )
+            batch_result = executor.run()
+            self.translated_segments = batch_result.translated_segments
+            self.consecutive_failures = batch_result.consecutive_failures
+            self.paused_due_to_failures = batch_result.paused_due_to_failures
+            self.resume_from_index = batch_result.resume_from_index
+            self.translated_text = "\n\n".join(seg for seg in self.translated_segments if seg)
+            self.root.after(0, self.update_translated_text, self.translated_text)
+            self.save_progress_cache()
 
             # 翻译完成后的处理
             if self.is_translating and not self.paused_due_to_failures:
@@ -2603,18 +2543,10 @@ class BookTranslatorGUI:
         if (target_is_chinese and lang == 'zh') or (target_is_english and lang == 'en'):
             return text
             
-        # 映射 API 类型
-        provider = APIProvider.GEMINI
-        if api_type == 'gemini': provider = APIProvider.GEMINI
-        elif api_type == 'openai': provider = APIProvider.OPENAI
-        elif api_type == 'claude': provider = APIProvider.CLAUDE
-        elif api_type == 'deepseek': provider = APIProvider.DEEPSEEK
-        elif api_type == 'lm_studio': provider = APIProvider.LM_STUDIO
-        elif api_type == 'custom': provider = APIProvider.CUSTOM
-        elif api_type in self.custom_local_models: provider = api_type # 自定义本地模型作为 provider 字符串传递
-        
+        provider = resolve_provider_token(api_type, self.custom_local_models)
+
         # 构建风格提示
-        style = self.style_var.get()
+        style = self.style_var.get() if hasattr(self, 'style_var') else self.saved_translation_style
         style_prompt_map = {
             "直译 (Literal)": "请进行精准直译，严格保留原文的句子结构和语气，不要过度意译。",
             "通俗小说 (Novel)": "请采用通俗小说的笔法，用词生动、流畅，注重情节的连贯性和人物语气的自然，符合目标语言读者的阅读习惯。",
@@ -2631,9 +2563,9 @@ class BookTranslatorGUI:
         result = self.translation_engine.translate(
             text=text,
             target_lang=target_language,
-            provider=provider if isinstance(provider, str) else provider.value,
-            use_memory=True,
-            use_glossary=True,
+            provider=provider,
+            use_memory=self.use_translation_memory,
+            use_glossary=self.use_glossary,
             context=context,
             extra_prompt=style_guide
         )
@@ -2739,136 +2671,27 @@ class BookTranslatorGUI:
 
     def refresh_failed_segments_view(self):
         """刷新失败段落列表和状态"""
-        if not hasattr(self, 'failed_listbox'):
-            return
-
-        self.failed_listbox.delete(0, tk.END)
-        self.selected_failed_index = None
-
-        self.failed_source_text.config(state='normal')
-        self.failed_source_text.delete('1.0', tk.END)
-        self.failed_source_text.config(state='disabled')
-
-        self.manual_translation_text.delete('1.0', tk.END)
-
-        if not self.failed_segments:
-            self.failed_status_var.set("暂无失败段落")
-            return
-
-        for item in self.failed_segments:
-            snippet = item['source'].replace("\n", " ")
-            if len(snippet) > 60:
-                snippet = snippet[:60] + "..."
-            self.failed_listbox.insert(tk.END, f"段 {item['index'] + 1}: {snippet}")
-
-        self.failed_status_var.set(f"待处理段落: {len(self.failed_segments)} 个")
+        if hasattr(self, 'failed_segment_feature'):
+            self.failed_segment_feature.refresh()
 
     def on_failed_select(self, event=None):
         """选中失败段落时展示详情"""
-        if not self.failed_segments:
-            return
+        if hasattr(self, 'failed_segment_feature'):
+            self.failed_segment_feature.handle_selection()
 
-        selection = self.failed_listbox.curselection()
-        if not selection:
-            return
-
-        idx = selection[0]
-        self.selected_failed_index = idx
-        info = self.failed_segments[idx]
-
-        self.failed_source_text.config(state='normal')
-        self.failed_source_text.delete('1.0', tk.END)
-        self.failed_source_text.insert('1.0', info['source'])
-        self.failed_source_text.config(state='disabled')
-
-        self.manual_translation_text.delete('1.0', tk.END)
+    def get_selected_failed_segment(self):
+        """返回当前选中的失败段信息。"""
+        if hasattr(self, 'failed_segment_feature'):
+            return self.failed_segment_feature.get_selected_segment()
+        return None
 
     def retry_failed_segment(self):
         """对选中失败段落重新翻译"""
-        if self.selected_failed_index is None or not self.failed_segments:
-            messagebox.showinfo("提示", "请先选择需要重试的段落")
-            return
-
-        info = self.failed_segments[self.selected_failed_index]
-        api_type = self.get_retry_api_type()
-
-        if api_type in self.custom_local_models:
-            config = self.custom_local_models[api_type]
-            if not config.get('base_url') or not config.get('model_id'):
-                messagebox.showwarning("警告", "请先配置本地模型的 Base URL 和 Model ID")
-                self.open_edit_local_model_dialog(api_type)
-                return
-            if not OPENAI_SUPPORT:
-                messagebox.showerror("错误", "缺少 openai 库，无法调用本地模型")
-                return
-        else:
-            config = self.api_configs.get(api_type, {})
-            if api_type == 'custom' and not config.get('base_url'):
-                messagebox.showwarning("警告", "请先配置自定义API的 Base URL")
-                self.open_api_config(api_type)
-                return
-            if api_type in ['gemini', 'openai', 'custom', 'lm_studio'] and not config.get('api_key'):
-                messagebox.showwarning("警告", "请先配置API Key")
-                self.open_api_config(api_type)
-                return
-            if api_type == 'lm_studio' and not OPENAI_SUPPORT:
-                messagebox.showerror("错误", "缺少 openai 库，无法调用本地LM Studio")
-                return
-
-        try:
-            retry_text = self.translate_segment(api_type, info['source'])
-        except Exception as e:
-            messagebox.showerror("错误", f"重试翻译失败: {e}")
-            return
-
-        if self.is_translation_incomplete(retry_text, info['source'], target_language=self.get_target_language()):
-            messagebox.showwarning("提示", "重试后仍未完成，请手动翻译。")
-            return
-
-        self.translated_segments[info['index']] = retry_text
-        self.failed_segments.pop(self.selected_failed_index)
-        self.rebuild_translated_text()
-        self.refresh_failed_segments_view()
-        self.save_progress_cache()
-        messagebox.showinfo("成功", f"段 {info['index'] + 1} 已重新翻译并替换")
+        self.failed_segment_feature.retry_selected()
 
     def save_manual_translation(self):
         """将手动译文写回对应段落并保存到记忆库"""
-        if self.selected_failed_index is None or not self.failed_segments:
-            messagebox.showinfo("提示", "请先选择需要替换的段落")
-            return
-
-        manual_text = self.manual_translation_text.get('1.0', tk.END).strip()
-        if not manual_text:
-            messagebox.showwarning("警告", "手动翻译内容不能为空")
-            return
-
-        info = self.failed_segments[self.selected_failed_index]
-        source_text = info['source']
-        
-        # 1. 更新运行时数据
-        self.translated_segments[info['index']] = manual_text
-        self.failed_segments.pop(self.selected_failed_index)
-        
-        # 2. 保存到翻译记忆库 (Linkage 1)
-        try:
-            target_lang = self.get_target_language()
-            self.translation_memory.store(
-                source_text=source_text,
-                translated_text=manual_text,
-                target_lang=target_lang,
-                api_provider="manual",
-                model="user_correction",
-                quality_score=100  # 人工修正视为完美
-            )
-            print(f"已将人工修正存入记忆库: ID={info['index']}")
-        except Exception as e:
-            print(f"保存到记忆库失败: {e}")
-
-        self.rebuild_translated_text()
-        self.refresh_failed_segments_view()
-        messagebox.showinfo("成功", f"段 {info['index'] + 1} 已使用手动译文替换并存入记忆库")
-        self.save_progress_cache()
+        self.failed_segment_feature.save_manual_translation()
 
     def rebuild_translated_text(self):
         """根据分段译文重建完整译文"""

@@ -7,7 +7,10 @@ Docx 处理模块 (Docx Handler)
 说明：
 - 该实现优先保证“可稳定导出”，而不是复杂 run 级精确保真。
 - 段落与表格单元格段落都支持基础回填。
+- 输出目录会自动创建，减少导出阶段的路径错误。
 """
+
+from pathlib import Path
 
 try:
     from docx import Document
@@ -61,9 +64,34 @@ class DocxHandler:
             return doc.paragraphs[mapping['index']]
 
         if mapping['type'] == 'table':
-            return doc.tables[mapping['table_idx']].rows[mapping['row_idx']].cells[mapping['col_idx']].paragraphs[mapping['cell_p_idx']]
+            return (
+                doc.tables[mapping['table_idx']]
+                .rows[mapping['row_idx']]
+                .cells[mapping['col_idx']]
+                .paragraphs[mapping['cell_p_idx']]
+            )
 
         raise ValueError(f"未知段落类型: {mapping['type']}")
+
+    def _normalize_segments(self, segments, argument_name):
+        """将外部输入标准化为字符串列表，减少导出阶段的类型错误。"""
+        if isinstance(segments, str):
+            raise TypeError(f"{argument_name} 必须是段落列表，不能直接传入单个字符串")
+
+        if segments is None:
+            raise TypeError(f"{argument_name} 不能为空")
+
+        try:
+            normalized = ["" if item is None else str(item) for item in segments]
+        except TypeError as exc:
+            raise TypeError(f"{argument_name} 必须是可迭代的段落列表") from exc
+
+        return normalized
+
+    def _ensure_output_dir(self, output_path):
+        output_file = Path(output_path)
+        output_file.parent.mkdir(parents=True, exist_ok=True)
+        return output_file
 
     def _replace_paragraph_text(self, paragraph, text):
         """尽量保留基础段落样式并替换文本。"""
@@ -78,8 +106,7 @@ class DocxHandler:
 
     def save_translated_file(self, translated_segments, output_path):
         """将翻译后的段落回填到文档中并保存。"""
-        if not isinstance(translated_segments, list):
-            raise TypeError("translated_segments 必须为 List[str]")
+        translated_segments = self._normalize_segments(translated_segments, 'translated_segments')
 
         if not translated_segments:
             raise ValueError("没有可写入的译文段落")
@@ -95,18 +122,22 @@ class DocxHandler:
 
         for idx in range(limit):
             mapping = self.para_map[idx]
-            trans_text = translated_segments[idx] or ''
+            trans_text = translated_segments[idx]
             try:
                 paragraph = self._resolve_target_paragraph(doc, mapping)
                 self._replace_paragraph_text(paragraph, trans_text)
-            except Exception as e:
-                print(f"DOCX 回填失败 (段落 {idx + 1}): {e}")
+            except Exception as exc:
+                print(f"DOCX 回填失败 (段落 {idx + 1}): {exc}")
 
-        doc.save(output_path)
-        return output_path
+        output_file = self._ensure_output_dir(output_path)
+        doc.save(str(output_file))
+        return str(output_file)
 
     def save_bilingual_file(self, original_segments, translated_segments, output_path):
         """保存为双语对照 Word 文档。"""
+        original_segments = self._normalize_segments(original_segments, 'original_segments')
+        translated_segments = self._normalize_segments(translated_segments, 'translated_segments')
+
         doc = Document()
         doc.add_heading('双语对照翻译 / Bilingual Translation', 0)
 
@@ -125,5 +156,6 @@ class DocxHandler:
             if i < len(translated_segments):
                 row_cells[1].text = translated_segments[i]
 
-        doc.save(output_path)
-        return output_path
+        output_file = self._ensure_output_dir(output_path)
+        doc.save(str(output_file))
+        return str(output_file)

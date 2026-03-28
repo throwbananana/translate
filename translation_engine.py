@@ -56,6 +56,28 @@ class APIProvider(Enum):
     CUSTOM = "custom"
 
 
+BUILTIN_PROVIDER_MAP = {
+    'gemini': APIProvider.GEMINI,
+    'openai': APIProvider.OPENAI,
+    'claude': APIProvider.CLAUDE,
+    'deepseek': APIProvider.DEEPSEEK,
+    'lm_studio': APIProvider.LM_STUDIO,
+    'custom': APIProvider.CUSTOM,
+}
+
+
+def get_provider_enum(provider_name: str) -> APIProvider:
+    """将提供商名称标准化为 APIProvider。"""
+    return BUILTIN_PROVIDER_MAP.get(provider_name, APIProvider.GEMINI)
+
+
+def resolve_provider_token(provider_name: str, custom_local_models: Optional[Dict[str, Dict]] = None):
+    """返回 TranslationEngine.translate 可直接使用的 provider token。"""
+    if custom_local_models and provider_name in custom_local_models:
+        return provider_name
+    return get_provider_enum(provider_name).value
+
+
 @dataclass
 class TranslationResult:
     """翻译结果"""
@@ -781,6 +803,58 @@ class TranslationEngine:
 
 
 # 便捷函数
+def build_api_config(name: str, cfg: dict) -> Optional[APIConfig]:
+    """从配置字典构造 APIConfig。未配置 api_key 时返回 None。"""
+    if not cfg or not cfg.get('api_key'):
+        return None
+
+    return APIConfig(
+        provider=get_provider_enum(name),
+        api_key=cfg.get('api_key', ''),
+        model=cfg.get('model', ''),
+        base_url=cfg.get('base_url', ''),
+        temperature=cfg.get('temperature', 0.2),
+    )
+
+
+def apply_runtime_config(
+    engine: TranslationEngine,
+    api_configs: Dict[str, Dict],
+    custom_local_models: Optional[Dict[str, Dict]] = None,
+    clear_existing: bool = True,
+) -> TranslationEngine:
+    """把 GUI/配置层的运行时配置同步到现有 TranslationEngine。"""
+    if clear_existing:
+        engine.api_configs.clear()
+        engine.custom_local_models.clear()
+        engine.fallback_provider = None
+
+    api_configs = api_configs or {}
+    custom_local_models = custom_local_models or {}
+
+    for name, cfg in api_configs.items():
+        api_config = build_api_config(name, cfg)
+        if api_config is None:
+            continue
+        engine.add_api_config(name, api_config)
+
+    for name, cfg in custom_local_models.items():
+        engine.add_custom_local_model(
+            name=name,
+            display_name=cfg.get('display_name', name),
+            base_url=cfg.get('base_url', ''),
+            model_id=cfg.get('model_id', ''),
+            api_key=cfg.get('api_key', 'lm-studio'),
+        )
+
+    if 'lm_studio' in api_configs and api_configs['lm_studio'].get('api_key'):
+        engine.set_fallback_provider('lm_studio')
+    elif custom_local_models:
+        engine.set_fallback_provider(list(custom_local_models.keys())[0])
+
+    return engine
+
+
 def create_engine_with_config(config: dict) -> TranslationEngine:
     """
     从配置字典创建翻译引擎
@@ -793,50 +867,12 @@ def create_engine_with_config(config: dict) -> TranslationEngine:
     """
     engine = TranslationEngine()
 
-    api_configs = config.get('api_configs', {})
-
-    for name, cfg in api_configs.items():
-        if not cfg.get('api_key'):
-            continue
-
-        provider = APIProvider.GEMINI  # 默认
-        if name == 'gemini':
-            provider = APIProvider.GEMINI
-        elif name == 'openai':
-            provider = APIProvider.OPENAI
-        elif name == 'claude':
-            provider = APIProvider.CLAUDE
-        elif name == 'deepseek':
-            provider = APIProvider.DEEPSEEK
-        elif name == 'lm_studio':
-            provider = APIProvider.LM_STUDIO
-        elif name == 'custom':
-            provider = APIProvider.CUSTOM
-
-        engine.add_api_config(name, APIConfig(
-            provider=provider,
-            api_key=cfg.get('api_key', ''),
-            model=cfg.get('model', ''),
-            base_url=cfg.get('base_url', ''),
-            temperature=cfg.get('temperature', 0.2)
-        ))
-
-    # 自定义本地模型
-    for name, cfg in config.get('custom_local_models', {}).items():
-        engine.add_custom_local_model(
-            name=name,
-            display_name=cfg.get('display_name', name),
-            base_url=cfg.get('base_url', ''),
-            model_id=cfg.get('model_id', ''),
-            api_key=cfg.get('api_key', 'lm-studio')
-        )
-
-    # 设置降级提供商
-    if 'lm_studio' in api_configs and api_configs['lm_studio'].get('api_key'):
-        engine.set_fallback_provider('lm_studio')
-    elif engine.custom_local_models:
-        engine.set_fallback_provider(list(engine.custom_local_models.keys())[0])
-
+    apply_runtime_config(
+        engine,
+        config.get('api_configs', {}),
+        config.get('custom_local_models', {}),
+        clear_existing=True,
+    )
     return engine
 
 
