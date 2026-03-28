@@ -31,8 +31,8 @@
     }
   },
   "custom_local_models": {},
-  "target_language": "中文",
-  "selected_translation_api": "本地 LM Studio",
-  "selected_analysis_api": "本地 LM Studio",
-  "selected_retry_api": "DeepSeek API"
+  "target_language": "英文",
+  "selected_translation_api": "Gemini API",
+  "selected_analysis_api": "Gemini API",
+  "selected_retry_api": "本地 LM Studio"
 }

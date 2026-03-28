@@ -1,4 +1,5 @@
 {
+  "version": "2.3",
   "api_configs": {
     "gemini": {
       "api_key": "test_key_12345",
@@ -8,6 +9,15 @@
       "api_key": "",
       "model": "gpt-3.5-turbo",
       "base_url": ""
+    },
+    "claude": {
+      "api_key": "",
+      "model": "claude-3-haiku-20240307"
+    },
+    "deepseek": {
+      "api_key": "",
+      "model": "deepseek-chat",
+      "base_url": "https://api.deepseek.com/v1"
     },
     "custom": {
       "api_key": "",
@@ -20,5 +30,9 @@
       "base_url": "http://127.0.0.1:1234/v1"
     }
   },
-  "target_language": "中文"
+  "custom_local_models": {},
+  "target_language": "英文",
+  "selected_translation_api": "Gemini API",
+  "selected_analysis_api": "Gemini API",
+  "selected_retry_api": "本地 LM Studio"
 }
