@@ -1,0 +1,919 @@
+From be2565e545361606425079890c036993d2d02a3d Mon Sep 17 00:00:00 2001
+From: Patch Generator <generated@example.invalid>
+Date: Sat, 28 Mar 2026 12:00:02 +0000
+Subject: [PATCH 2/4] translate: move runtime data and TM storage to user dir
+
+Move GUI runtime state and translation-memory storage out of the repository.
+
+This change makes the GUI load and save batch queue and progress cache through
+user-scoped runtime paths, and moves the translation-memory database to the
+same application directory. It also adds WAL mode and a re-entrant lock around
+SQLite access to make future threaded access less fragile.
+
+The main effect is to stop polluting the repository with mutable files and make
+state handling more consistent across platforms.
+
+---
+ book_translator_gui.pyw |  165 ++++------------
+ translation_memory.py   |  499 +++++++++++++++++++----------------------------
+ 2 files changed, 249 insertions(+), 415 deletions(-)
+-- 
+2.45.0
+--- a/book_translator_gui.pyw
++++ b/book_translator_gui.pyw
+@@ -70,6 +70,7 @@
+     REQUESTS_SUPPORT = False
+ 
+ from file_processor import FileProcessor
++from app_paths import get_runtime_file
+ from config_manager import ConfigManager, get_config_manager
+ from translation_memory import TranslationMemory, get_translation_memory
+ from glossary_manager import GlossaryManager, get_glossary_manager
+@@ -326,7 +327,8 @@
+         # 初始化辅助模块
+         self.file_processor = FileProcessor()
+         self.web_importer = WebImporter()
+-        self.progress_cache_path = Path(__file__).parent / 'translation_cache.json'
++        self.progress_cache_path = get_runtime_file('translation_cache.json')
++        self.batch_queue_path = get_runtime_file('batch_tasks.json')
+ 
+         # 初始化新模块
+         self.config_manager = get_config_manager()
+@@ -405,7 +407,7 @@
+     def load_batch_queue(self):
+         """加载批量任务列表"""
+         try:
+-            path = Path("batch_tasks.json")
++            path = self.batch_queue_path
+             if path.exists():
+                 with open(path, 'r', encoding='utf-8') as f:
+                     self.batch_queue = json.load(f)
+@@ -416,7 +418,8 @@
+     def save_batch_queue(self):
+         """保存批量任务列表"""
+         try:
+-            with open("batch_tasks.json", 'w', encoding='utf-8') as f:
++            self.batch_queue_path.parent.mkdir(parents=True, exist_ok=True)
++            with open(self.batch_queue_path, 'w', encoding='utf-8') as f:
+                 json.dump(self.batch_queue, f, ensure_ascii=False, indent=2)
+         except Exception as e:
+             print(f"Failed to save batch queue: {e}")
+@@ -1441,7 +1444,7 @@
+         config = self.api_configs.get(api_type, {})
+ 
+         if config.get('api_key'):
+-            self.api_status_var.set(f"已配置 API Key: {config['api_key'][:10]}...")
++            self.api_status_var.set("已配置 API Key")
+             self.api_status_label.config(foreground="green")
+         else:
+             self.api_status_var.set("未配置 API Key")
+@@ -1493,6 +1496,7 @@
+                 'target_language': self.get_target_language(),
+                 'resume_from_index': len(self.translated_segments)
+             }
++            self.progress_cache_path.parent.mkdir(parents=True, exist_ok=True)
+             with open(self.progress_cache_path, 'w', encoding='utf-8') as f:
+                 json.dump(data, f, ensure_ascii=False)
+         except Exception as e:
+@@ -2173,27 +2177,18 @@
+         return self._map_api_name_to_key(api_name)
+ 
+     def save_config(self, show_message=False):
+-        """保存配置到文件（自动保存）"""
+-        config_file = Path(__file__).parent / 'translator_config.json'
++        """保存配置到用户配置目录。"""
+         try:
+-            # 保存主配置（v2.0格式）
+-            with open(config_file, 'w', encoding='utf-8') as f:
+-                data = {
+-                    'version': CONFIG_VERSION,
+-                    'api_configs': self.api_configs,
+-                    'custom_local_models': self.custom_local_models,
+-                    'target_language': self.get_target_language(),
+-                    'selected_translation_api': self.translation_api_var.get(),
+-                    'selected_analysis_api': self.analysis_api_var.get(),
+-                    'selected_retry_api': self.retry_api_var.get()
+-                }
+-                json.dump(data, f, indent=2, ensure_ascii=False)
+-
+-            # 自动创建备份（保留最近3个）
+-            self.backup_config()
++            self.config_manager.set('api_configs', deepcopy(self.api_configs), save=False)
++            self.config_manager.set('custom_local_models', deepcopy(self.custom_local_models), save=False)
++            self.config_manager.set('target_language', self.get_target_language(), save=False)
++            self.config_manager.set('selected_translation_api', self.translation_api_var.get(), save=False)
++            self.config_manager.set('selected_analysis_api', self.analysis_api_var.get(), save=False)
++            self.config_manager.set('selected_retry_api', self.retry_api_var.get(), save=False)
++            self.config_manager.save(create_backup=True)
+ 
+             if show_message:
+-                print(f"✓ 配置已自动保存: {config_file}")
++                print(f"✓ 配置已自动保存: {self.config_manager.config_path}")
+         except Exception as e:
+             error_msg = f"保存配置失败: {e}"
+             print(error_msg)
+@@ -2201,124 +2196,50 @@
+                 messagebox.showerror("错误", error_msg)
+ 
+     def backup_config(self):
+-        """自动备份配置（保留最近3个备份）"""
++        """兼容旧调用，备份已由 ConfigManager.save 统一处理。"""
+         try:
+-            config_file = Path(__file__).parent / 'translator_config.json'
+-            if not config_file.exists():
+-                return
+-
+-            backup_dir = Path(__file__).parent / 'config_backups'
+-            backup_dir.mkdir(exist_ok=True)
+-
+-            # 生成备份文件名（时间戳）
+-            from datetime import datetime
+-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+-            backup_file = backup_dir / f'config_backup_{timestamp}.json'
+-
+-            # 复制当前配置到备份
+-            import shutil
+-            shutil.copy2(config_file, backup_file)
+-
+-            # 只保留最近3个备份
+-            backups = sorted(backup_dir.glob('config_backup_*.json'), reverse=True)
+-            for old_backup in backups[3:]:
+-                old_backup.unlink()
+-
++            self.config_manager.save(create_backup=True)
+         except Exception as e:
+             print(f"备份配置失败: {e}")
+ 
+     def load_config(self):
+-        """从文件加载配置（自动加载，支持v1到v2迁移）"""
+-        config_file = Path(__file__).parent / 'translator_config.json'
++        """从用户配置目录加载配置。"""
+         try:
+-            if config_file.exists():
+-                with open(config_file, 'r', encoding='utf-8') as f:
+-                    loaded_config = json.load(f)
+-
+-                # 版本检测和迁移
+-                if isinstance(loaded_config, dict):
+-                    if 'version' not in loaded_config:
+-                        # 旧版配置，执行迁移
+-                        loaded_config = self.migrate_config_v1_to_v2(loaded_config)
+-                        print("ℹ️ 已将配置文件从v1迁移到v2格式")
+-
+-                    # 加载API配置
+-                    api_config_section = loaded_config.get('api_configs', {})
+-                    self.merge_api_configs(api_config_section)
+-
+-                    # 加载自定义本地模型
+-                    self.custom_local_models = loaded_config.get('custom_local_models', {})
+-
+-                    # 加载目标语言
+-                    target_language = loaded_config.get('target_language', DEFAULT_TARGET_LANGUAGE)
+-                    self.target_language_var.set(target_language or DEFAULT_TARGET_LANGUAGE)
+-
+-                    # 恢复API选择状态
+-                    saved_trans_api = loaded_config.get('selected_translation_api', 'Gemini API')
+-                    saved_analysis_api = loaded_config.get('selected_analysis_api', 'Gemini API')
+-                    saved_retry_api = loaded_config.get('selected_retry_api')
+-                    self.translation_api_var.set(saved_trans_api)
+-                    self.analysis_api_var.set(saved_analysis_api)
+-                    default_retry_api = "本地 LM Studio" if OPENAI_SUPPORT else saved_trans_api
+-                    self.retry_api_var.set(saved_retry_api or default_retry_api)
+-                else:
+-                    self.merge_api_configs({})
+-                    self.target_language_var.set(DEFAULT_TARGET_LANGUAGE)
++            loaded_config = self.config_manager.get_all()
++            api_config_section = loaded_config.get('api_configs', {})
++            self.merge_api_configs(api_config_section)
++
++            self.custom_local_models = loaded_config.get('custom_local_models', {})
++            target_language = loaded_config.get('target_language', DEFAULT_TARGET_LANGUAGE)
++            self.target_language_var.set(target_language or DEFAULT_TARGET_LANGUAGE)
++
++            saved_trans_api = loaded_config.get('selected_translation_api', 'Gemini API')
++            saved_analysis_api = loaded_config.get('selected_analysis_api', 'Gemini API')
++            saved_retry_api = loaded_config.get('selected_retry_api')
++            self.translation_api_var.set(saved_trans_api)
++            self.analysis_api_var.set(saved_analysis_api)
++            default_retry_api = "本地 LM Studio" if OPENAI_SUPPORT else saved_trans_api
++            self.retry_api_var.set(saved_retry_api or default_retry_api)
+ 
+-                self.update_api_status()
+-                self.refresh_api_dropdowns()
+-                configured_count = len([k for k, v in self.api_configs.items() if v.get('api_key')])
+-                local_count = len(self.custom_local_models)
+-                print(f"✓ 配置已加载: {configured_count} 个API已配置, {local_count} 个自定义本地模型")
+-            else:
+-                self.merge_api_configs({})
+-                self.target_language_var.set(DEFAULT_TARGET_LANGUAGE)
+-                print("ℹ️ 未找到配置文件，使用默认配置")
++            self.update_api_status()
++            self.refresh_api_dropdowns()
++            configured_count = len([k for k, v in self.api_configs.items() if v.get('api_key')])
++            local_count = len(self.custom_local_models)
++            print(f"✓ 配置已加载: {configured_count} 个API已配置, {local_count} 个自定义本地模型")
+         except Exception as e:
+             error_msg = f"加载配置失败: {e}"
+             print(error_msg)
+-            # 尝试从备份恢复
+             if self.restore_from_backup():
+                 print("✓ 已从备份恢复配置")
+             else:
+                 messagebox.showwarning("警告", f"{error_msg}\n将使用默认配置")
+ 
+     def restore_from_backup(self):
+-        """从最新备份恢复配置"""
++        """从最新备份恢复配置。"""
+         try:
+-            backup_dir = Path(__file__).parent / 'config_backups'
+-            if not backup_dir.exists():
+-                return False
+-
+-            backups = sorted(backup_dir.glob('config_backup_*.json'), reverse=True)
+-            if not backups:
++            if not self.config_manager._restore_from_backup():
+                 return False
+-
+-            # 使用最新的备份
+-            latest_backup = backups[0]
+-            with open(latest_backup, 'r', encoding='utf-8') as f:
+-                loaded_config = json.load(f)
+-                if isinstance(loaded_config, dict) and 'api_configs' in loaded_config:
+-                    api_config_section = loaded_config.get('api_configs', {})
+-                    target_language = loaded_config.get('target_language', DEFAULT_TARGET_LANGUAGE)
+-                else:
+-                    api_config_section = loaded_config if isinstance(loaded_config, dict) else {}
+-                    target_language = (
+-                        loaded_config.get('target_language', DEFAULT_TARGET_LANGUAGE)
+-                        if isinstance(loaded_config, dict) else DEFAULT_TARGET_LANGUAGE
+-                    )
+-                self.merge_api_configs(api_config_section)
+-                self.target_language_var.set(target_language or DEFAULT_TARGET_LANGUAGE)
+-
+-            # 恢复成功后保存为主配置
+-            config_file = Path(__file__).parent / 'translator_config.json'
+-            with open(config_file, 'w', encoding='utf-8') as f:
+-                data = {
+-                    'api_configs': self.api_configs,
+-                    'target_language': self.get_target_language()
+-                }
+-                json.dump(data, f, indent=2, ensure_ascii=False)
+-
++            self.load_config()
+             return True
+         except Exception as e:
+             print(f"从备份恢复失败: {e}")
+--- a/translation_memory.py
++++ b/translation_memory.py
+@@ -4,21 +4,23 @@
+ 翻译记忆 (Translation Memory) 模块
+ 使用 SQLite 存储翻译历史，避免重复翻译相同内容，节省 API 费用
+ 
+-功能：
+-- 基于文本哈希的快速查找
+-- 支持模糊匹配（相似度查找）
+-- 自动清理过期记录
+-- 统计信息和导出功能
++改进：
++- 默认写入用户级运行目录，而非源码目录
++- 为多线程调用增加锁保护
++- 启用 WAL，降低并发读写冲突概率
+ """
+ 
+ import sqlite3
+ import hashlib
+ import json
++import threading
+ from pathlib import Path
+ from datetime import datetime, timedelta
+ from typing import Optional, List, Dict, Tuple
+ import difflib
+ 
++from app_paths import get_runtime_file
++
+ 
+ class TranslationMemory:
+     """翻译记忆管理器"""
+@@ -28,174 +30,143 @@
+         初始化翻译记忆数据库
+ 
+         Args:
+-            db_path: 数据库文件路径，默认在程序目录下的 translation_memory.db
++            db_path: 数据库文件路径，默认在用户运行目录下的 translation_memory.db
+         """
+         if db_path is None:
+-            db_path = Path(__file__).parent / 'translation_memory.db'
++            db_path = get_runtime_file('translation_memory.db')
+ 
+         self.db_path = Path(db_path)
+-        self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False)
++        self.db_path.parent.mkdir(parents=True, exist_ok=True)
++        self._lock = threading.RLock()
++        self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False, timeout=30)
+         self.conn.row_factory = sqlite3.Row
++
++        with self._lock:
++            self.conn.execute('PRAGMA journal_mode=WAL')
++            self.conn.execute('PRAGMA synchronous=NORMAL')
++
+         self._init_db()
+ 
+     def _init_db(self):
+         """初始化数据库表结构"""
+-        cursor = self.conn.cursor()
++        with self._lock:
++            cursor = self.conn.cursor()
+ 
+-        # 主表：存储翻译记录
+-        cursor.execute('''
+-            CREATE TABLE IF NOT EXISTS memories (
+-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+-                source_hash TEXT NOT NULL,
+-                source_text TEXT NOT NULL,
+-                translated_text TEXT NOT NULL,
+-                source_lang TEXT DEFAULT '',
+-                target_lang TEXT NOT NULL,
+-                api_provider TEXT DEFAULT '',
+-                model TEXT DEFAULT '',
+-                quality_score INTEGER DEFAULT 0,
+-                use_count INTEGER DEFAULT 1,
+-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+-                UNIQUE(source_hash, target_lang)
+-            )
+-        ''')
+-
+-        # 索引：加速查询
+-        cursor.execute('''
+-            CREATE INDEX IF NOT EXISTS idx_source_hash
+-            ON memories(source_hash)
+-        ''')
+-        cursor.execute('''
+-            CREATE INDEX IF NOT EXISTS idx_target_lang
+-            ON memories(target_lang)
+-        ''')
+-        cursor.execute('''
+-            CREATE INDEX IF NOT EXISTS idx_updated_at
+-            ON memories(updated_at)
+-        ''')
+-
+-        # 统计表
+-        cursor.execute('''
+-            CREATE TABLE IF NOT EXISTS stats (
+-                id INTEGER PRIMARY KEY AUTOINCREMENT,
+-                date TEXT NOT NULL UNIQUE,
+-                lookups INTEGER DEFAULT 0,
+-                hits INTEGER DEFAULT 0,
+-                misses INTEGER DEFAULT 0,
+-                saves INTEGER DEFAULT 0
+-            )
+-        ''')
++            cursor.execute('''
++                CREATE TABLE IF NOT EXISTS memories (
++                    id INTEGER PRIMARY KEY AUTOINCREMENT,
++                    source_hash TEXT NOT NULL,
++                    source_text TEXT NOT NULL,
++                    translated_text TEXT NOT NULL,
++                    source_lang TEXT DEFAULT '',
++                    target_lang TEXT NOT NULL,
++                    api_provider TEXT DEFAULT '',
++                    model TEXT DEFAULT '',
++                    quality_score INTEGER DEFAULT 0,
++                    use_count INTEGER DEFAULT 1,
++                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
++                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
++                    UNIQUE(source_hash, target_lang)
++                )
++            ''')
+ 
+-        self.conn.commit()
++            cursor.execute('''
++                CREATE INDEX IF NOT EXISTS idx_source_hash
++                ON memories(source_hash)
++            ''')
++            cursor.execute('''
++                CREATE INDEX IF NOT EXISTS idx_target_lang
++                ON memories(target_lang)
++            ''')
++            cursor.execute('''
++                CREATE INDEX IF NOT EXISTS idx_updated_at
++                ON memories(updated_at)
++            ''')
+ 
+-    def _compute_hash(self, text: str, target_lang: str) -> str:
+-        """
+-        计算文本的哈希值
++            cursor.execute('''
++                CREATE TABLE IF NOT EXISTS stats (
++                    id INTEGER PRIMARY KEY AUTOINCREMENT,
++                    date TEXT NOT NULL UNIQUE,
++                    lookups INTEGER DEFAULT 0,
++                    hits INTEGER DEFAULT 0,
++                    misses INTEGER DEFAULT 0,
++                    saves INTEGER DEFAULT 0
++                )
++            ''')
+ 
+-        Args:
+-            text: 源文本
+-            target_lang: 目标语言
++            self.conn.commit()
+ 
+-        Returns:
+-            MD5 哈希字符串
+-        """
+-        # 标准化文本：去除首尾空白，统一换行符
++    def _compute_hash(self, text: str, target_lang: str) -> str:
++        """计算文本哈希。"""
+         normalized = text.strip().replace('\r\n', '\n').replace('\r', '\n')
+         key = f"{normalized}:::{target_lang}"
+         return hashlib.md5(key.encode('utf-8')).hexdigest()
+ 
+     def _update_stats(self, stat_type: str):
+-        """更新统计信息"""
++        """更新统计信息。"""
+         today = datetime.now().strftime('%Y-%m-%d')
+-        cursor = self.conn.cursor()
+-
+-        cursor.execute('''
+-            INSERT INTO stats (date, lookups, hits, misses, saves)
+-            VALUES (?, 0, 0, 0, 0)
+-            ON CONFLICT(date) DO NOTHING
+-        ''', (today,))
+-
+-        if stat_type == 'lookup':
+-            cursor.execute('UPDATE stats SET lookups = lookups + 1 WHERE date = ?', (today,))
+-        elif stat_type == 'hit':
+-            cursor.execute('UPDATE stats SET hits = hits + 1 WHERE date = ?', (today,))
+-        elif stat_type == 'miss':
+-            cursor.execute('UPDATE stats SET misses = misses + 1 WHERE date = ?', (today,))
+-        elif stat_type == 'save':
+-            cursor.execute('UPDATE stats SET saves = saves + 1 WHERE date = ?', (today,))
++        with self._lock:
++            cursor = self.conn.cursor()
++            cursor.execute('''
++                INSERT INTO stats (date, lookups, hits, misses, saves)
++                VALUES (?, 0, 0, 0, 0)
++                ON CONFLICT(date) DO NOTHING
++            ''', (today,))
++
++            if stat_type == 'lookup':
++                cursor.execute('UPDATE stats SET lookups = lookups + 1 WHERE date = ?', (today,))
++            elif stat_type == 'hit':
++                cursor.execute('UPDATE stats SET hits = hits + 1 WHERE date = ?', (today,))
++            elif stat_type == 'miss':
++                cursor.execute('UPDATE stats SET misses = misses + 1 WHERE date = ?', (today,))
++            elif stat_type == 'save':
++                cursor.execute('UPDATE stats SET saves = saves + 1 WHERE date = ?', (today,))
+ 
+-        self.conn.commit()
++            self.conn.commit()
+ 
+     def lookup(self, text: str, target_lang: str) -> Optional[str]:
+-        """
+-        查找翻译记忆
+-
+-        Args:
+-            text: 源文本
+-            target_lang: 目标语言
+-
+-        Returns:
+-            已存储的翻译结果，如果没找到返回 None
+-        """
++        """查找翻译记忆。"""
+         self._update_stats('lookup')
+-
+         source_hash = self._compute_hash(text, target_lang)
+-        cursor = self.conn.cursor()
+-
+-        cursor.execute('''
+-            SELECT translated_text, use_count FROM memories
+-            WHERE source_hash = ? AND target_lang = ?
+-        ''', (source_hash, target_lang))
+-
+-        result = cursor.fetchone()
+ 
+-        if result:
+-            self._update_stats('hit')
+-            # 更新使用次数
++        with self._lock:
++            cursor = self.conn.cursor()
+             cursor.execute('''
+-                UPDATE memories
+-                SET use_count = use_count + 1, updated_at = CURRENT_TIMESTAMP
++                SELECT translated_text FROM memories
+                 WHERE source_hash = ? AND target_lang = ?
+             ''', (source_hash, target_lang))
+-            self.conn.commit()
+-            return result['translated_text']
++            result = cursor.fetchone()
++
++            if result:
++                cursor.execute('''
++                    UPDATE memories
++                    SET use_count = use_count + 1, updated_at = CURRENT_TIMESTAMP
++                    WHERE source_hash = ? AND target_lang = ?
++                ''', (source_hash, target_lang))
++                self.conn.commit()
++                self._update_stats('hit')
++                return result['translated_text']
+ 
+         self._update_stats('miss')
+         return None
+ 
+-    def lookup_similar(self, text: str, target_lang: str,
+-                       threshold: float = 0.85) -> List[Dict]:
+-        """
+-        模糊查找相似的翻译记忆
+-
+-        Args:
+-            text: 源文本
+-            target_lang: 目标语言
+-            threshold: 相似度阈值 (0.0-1.0)
+-
+-        Returns:
+-            相似翻译列表，包含源文本、翻译、相似度
+-        """
+-        cursor = self.conn.cursor()
+-
+-        # 获取同目标语言的所有记录（限制数量避免性能问题）
+-        cursor.execute('''
+-            SELECT source_text, translated_text, use_count
+-            FROM memories
+-            WHERE target_lang = ?
+-            ORDER BY use_count DESC, updated_at DESC
+-            LIMIT 1000
+-        ''', (target_lang,))
++    def lookup_similar(self, text: str, target_lang: str, threshold: float = 0.85) -> List[Dict]:
++        """模糊查找相似的翻译记忆。"""
++        with self._lock:
++            cursor = self.conn.cursor()
++            cursor.execute('''
++                SELECT source_text, translated_text, use_count
++                FROM memories
++                WHERE target_lang = ?
++                ORDER BY use_count DESC, updated_at DESC
++                LIMIT 1000
++            ''', (target_lang,))
++            rows = cursor.fetchall()
+ 
+         results = []
+         normalized_text = text.strip()
+-
+-        for row in cursor.fetchall():
+-            similarity = difflib.SequenceMatcher(
+-                None, normalized_text, row['source_text']
+-            ).ratio()
+-
++        for row in rows:
++            similarity = difflib.SequenceMatcher(None, normalized_text, row['source_text']).ratio()
+             if similarity >= threshold:
+                 results.append({
+                     'source': row['source_text'],
+@@ -204,141 +175,108 @@
+                     'use_count': row['use_count']
+                 })
+ 
+-        # 按相似度排序
+         results.sort(key=lambda x: x['similarity'], reverse=True)
+-        return results[:10]  # 最多返回10个结果
++        return results[:10]
+ 
+     def store(self, source_text: str, translated_text: str, target_lang: str,
+               source_lang: str = '', api_provider: str = '', model: str = '',
+               quality_score: int = 0) -> bool:
+-        """
+-        存储翻译记忆
+-
+-        Args:
+-            source_text: 源文本
+-            translated_text: 翻译结果
+-            target_lang: 目标语言
+-            source_lang: 源语言（可选）
+-            api_provider: API 提供商（可选）
+-            model: 模型名称（可选）
+-            quality_score: 质量评分 0-100（可选）
+-
+-        Returns:
+-            是否存储成功
+-        """
++        """存储翻译记忆。"""
+         if not source_text or not translated_text or not target_lang:
+             return False
+ 
+         source_hash = self._compute_hash(source_text, target_lang)
+ 
+         try:
+-            cursor = self.conn.cursor()
+-            cursor.execute('''
+-                INSERT INTO memories
+-                (source_hash, source_text, translated_text, source_lang,
+-                 target_lang, api_provider, model, quality_score)
+-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+-                ON CONFLICT(source_hash, target_lang) DO UPDATE SET
+-                    translated_text = excluded.translated_text,
+-                    api_provider = excluded.api_provider,
+-                    model = excluded.model,
+-                    quality_score = excluded.quality_score,
+-                    use_count = use_count + 1,
+-                    updated_at = CURRENT_TIMESTAMP
+-            ''', (source_hash, source_text.strip(), translated_text.strip(),
+-                  source_lang, target_lang, api_provider, model, quality_score))
++            with self._lock:
++                cursor = self.conn.cursor()
++                cursor.execute('''
++                    INSERT INTO memories
++                    (source_hash, source_text, translated_text, source_lang,
++                     target_lang, api_provider, model, quality_score)
++                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
++                    ON CONFLICT(source_hash, target_lang) DO UPDATE SET
++                        translated_text = excluded.translated_text,
++                        api_provider = excluded.api_provider,
++                        model = excluded.model,
++                        quality_score = excluded.quality_score,
++                        use_count = use_count + 1,
++                        updated_at = CURRENT_TIMESTAMP
++                ''', (
++                    source_hash,
++                    source_text.strip(),
++                    translated_text.strip(),
++                    source_lang,
++                    target_lang,
++                    api_provider,
++                    model,
++                    quality_score,
++                ))
++                self.conn.commit()
+ 
+-            self.conn.commit()
+             self._update_stats('save')
+             return True
+-
+         except Exception as e:
+             print(f"存储翻译记忆失败: {e}")
+             return False
+ 
+     def delete(self, source_text: str, target_lang: str) -> bool:
+-        """删除指定的翻译记忆"""
++        """删除指定的翻译记忆。"""
+         source_hash = self._compute_hash(source_text, target_lang)
+-        cursor = self.conn.cursor()
+-        cursor.execute('''
+-            DELETE FROM memories WHERE source_hash = ? AND target_lang = ?
+-        ''', (source_hash, target_lang))
+-        self.conn.commit()
+-        return cursor.rowcount > 0
++        with self._lock:
++            cursor = self.conn.cursor()
++            cursor.execute('DELETE FROM memories WHERE source_hash = ? AND target_lang = ?', (source_hash, target_lang))
++            self.conn.commit()
++            return cursor.rowcount > 0
+ 
+     def cleanup(self, days: int = 90, min_use_count: int = 1) -> int:
+-        """
+-        清理过期或低使用率的记录
+-
+-        Args:
+-            days: 超过多少天未使用的记录将被删除
+-            min_use_count: 使用次数低于此值的记录将被删除
+-
+-        Returns:
+-            删除的记录数
+-        """
++        """清理过期或低使用率记录。"""
+         cutoff_date = datetime.now() - timedelta(days=days)
+-        cursor = self.conn.cursor()
+-
+-        cursor.execute('''
+-            DELETE FROM memories
+-            WHERE updated_at < ? AND use_count < ?
+-        ''', (cutoff_date.isoformat(), min_use_count))
+-
+-        deleted = cursor.rowcount
+-        self.conn.commit()
+-
+-        # 整理数据库
+-        cursor.execute('VACUUM')
+-
+-        return deleted
++        with self._lock:
++            cursor = self.conn.cursor()
++            cursor.execute('''
++                DELETE FROM memories
++                WHERE updated_at < ? AND use_count < ?
++            ''', (cutoff_date.isoformat(), min_use_count))
++            deleted = cursor.rowcount
++            self.conn.commit()
++            cursor.execute('VACUUM')
++            return deleted
+ 
+     def get_stats(self) -> Dict:
+-        """
+-        获取翻译记忆统计信息
++        """获取翻译记忆统计信息。"""
++        with self._lock:
++            cursor = self.conn.cursor()
++            cursor.execute('SELECT COUNT(*) as total FROM memories')
++            total_records = cursor.fetchone()['total']
+ 
+-        Returns:
+-            统计信息字典
+-        """
+-        cursor = self.conn.cursor()
++            cursor.execute('''
++                SELECT target_lang, COUNT(*) as count
++                FROM memories
++                GROUP BY target_lang
++            ''')
++            by_language = {row['target_lang']: row['count'] for row in cursor.fetchall()}
+ 
+-        # 总记录数
+-        cursor.execute('SELECT COUNT(*) as total FROM memories')
+-        total_records = cursor.fetchone()['total']
+-
+-        # 按目标语言分组
+-        cursor.execute('''
+-            SELECT target_lang, COUNT(*) as count
+-            FROM memories
+-            GROUP BY target_lang
+-        ''')
+-        by_language = {row['target_lang']: row['count'] for row in cursor.fetchall()}
+-
+-        # 按 API 提供商分组
+-        cursor.execute('''
+-            SELECT api_provider, COUNT(*) as count
+-            FROM memories
+-            WHERE api_provider != ''
+-            GROUP BY api_provider
+-        ''')
+-        by_provider = {row['api_provider']: row['count'] for row in cursor.fetchall()}
+-
+-        # 最近7天的命中率
+-        week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+-        cursor.execute('''
+-            SELECT SUM(lookups) as lookups, SUM(hits) as hits
+-            FROM stats
+-            WHERE date >= ?
+-        ''', (week_ago,))
+-
+-        row = cursor.fetchone()
+-        lookups = row['lookups'] or 0
+-        hits = row['hits'] or 0
+-        hit_rate = (hits / lookups * 100) if lookups > 0 else 0
++            cursor.execute('''
++                SELECT api_provider, COUNT(*) as count
++                FROM memories
++                WHERE api_provider != ''
++                GROUP BY api_provider
++            ''')
++            by_provider = {row['api_provider']: row['count'] for row in cursor.fetchall()}
+ 
+-        # 数据库大小
+-        db_size = self.db_path.stat().st_size if self.db_path.exists() else 0
++            week_ago = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
++            cursor.execute('''
++                SELECT SUM(lookups) as lookups, SUM(hits) as hits
++                FROM stats
++                WHERE date >= ?
++            ''', (week_ago,))
++            row = cursor.fetchone()
++            lookups = row['lookups'] or 0
++            hits = row['hits'] or 0
+ 
++        db_size = self.db_path.stat().st_size if self.db_path.exists() else 0
++        hit_rate = (hits / lookups * 100) if lookups > 0 else 0
+         return {
+             'total_records': total_records,
+             'by_language': by_language,
+@@ -351,57 +289,37 @@
+         }
+ 
+     def export_to_json(self, output_path: str, target_lang: str = None) -> int:
+-        """
+-        导出翻译记忆到 JSON 文件
+-
+-        Args:
+-            output_path: 输出文件路径
+-            target_lang: 只导出指定目标语言的记录（可选）
+-
+-        Returns:
+-            导出的记录数
+-        """
+-        cursor = self.conn.cursor()
+-
+-        if target_lang:
+-            cursor.execute('''
+-                SELECT source_text, translated_text, source_lang, target_lang,
+-                       api_provider, model, quality_score, use_count, created_at
+-                FROM memories
+-                WHERE target_lang = ?
+-                ORDER BY use_count DESC
+-            ''', (target_lang,))
+-        else:
+-            cursor.execute('''
+-                SELECT source_text, translated_text, source_lang, target_lang,
+-                       api_provider, model, quality_score, use_count, created_at
+-                FROM memories
+-                ORDER BY target_lang, use_count DESC
+-            ''')
+-
+-        records = [dict(row) for row in cursor.fetchall()]
++        """导出翻译记忆到 JSON。"""
++        with self._lock:
++            cursor = self.conn.cursor()
++            if target_lang:
++                cursor.execute('''
++                    SELECT source_text, translated_text, source_lang, target_lang,
++                           api_provider, model, quality_score, use_count, created_at
++                    FROM memories
++                    WHERE target_lang = ?
++                    ORDER BY use_count DESC
++                ''', (target_lang,))
++            else:
++                cursor.execute('''
++                    SELECT source_text, translated_text, source_lang, target_lang,
++                           api_provider, model, quality_score, use_count, created_at
++                    FROM memories
++                    ORDER BY target_lang, use_count DESC
++                ''')
++            records = [dict(row) for row in cursor.fetchall()]
+ 
+         with open(output_path, 'w', encoding='utf-8') as f:
+             json.dump(records, f, ensure_ascii=False, indent=2)
+-
+         return len(records)
+ 
+     def import_from_json(self, input_path: str) -> Tuple[int, int]:
+-        """
+-        从 JSON 文件导入翻译记忆
+-
+-        Args:
+-            input_path: 输入文件路径
+-
+-        Returns:
+-            (成功导入数, 跳过数) 元组
+-        """
++        """从 JSON 导入翻译记忆。"""
+         with open(input_path, 'r', encoding='utf-8') as f:
+             records = json.load(f)
+ 
+         imported = 0
+         skipped = 0
+-
+         for record in records:
+             if self.store(
+                 source_text=record.get('source_text', ''),
+@@ -419,9 +337,10 @@
+         return imported, skipped
+ 
+     def close(self):
+-        """关闭数据库连接"""
++        """关闭数据库连接。"""
+         if self.conn:
+-            self.conn.close()
++            with self._lock:
++                self.conn.close()
+ 
+     def __enter__(self):
+         return self
+@@ -430,11 +349,11 @@
+         self.close()
+ 
+ 
+-# 全局实例（方便导入使用）
+ _default_tm = None
+ 
++
+ def get_translation_memory() -> TranslationMemory:
+-    """获取默认的翻译记忆实例"""
++    """获取默认的翻译记忆实例。"""
+     global _default_tm
+     if _default_tm is None:
+         _default_tm = TranslationMemory()
+@@ -442,26 +361,20 @@
+ 
+ 
+ if __name__ == '__main__':
+-    # 测试代码
+     print("翻译记忆模块测试")
+     print("=" * 50)
+ 
+     tm = TranslationMemory()
+-
+-    # 测试存储
+     tm.store("Hello, world!", "你好，世界！", "中文", api_provider="test")
+     tm.store("Good morning", "早上好", "中文", api_provider="test")
+     tm.store("Thank you", "谢谢", "中文", api_provider="test")
+ 
+-    # 测试查找
+     result = tm.lookup("Hello, world!", "中文")
+     print(f"查找 'Hello, world!' -> {result}")
+ 
+-    # 测试模糊查找
+     similar = tm.lookup_similar("Hello world", "中文", threshold=0.7)
+     print(f"模糊查找 'Hello world' -> {similar}")
+ 
+-    # 统计信息
+     stats = tm.get_stats()
+     print(f"\n统计信息: {json.dumps(stats, ensure_ascii=False, indent=2)}")
+ 

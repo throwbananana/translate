@@ -13,3 +13,13 @@ chrome_profile/
 # Logs
 *.log
 npm-debug.log*
+
+# Local runtime/config data
+translator_config.json
+translation_memory.db
+translation_cache.json
+batch_tasks.json
+config_backups/
+*.sqlite
+*.sqlite3
+*.db

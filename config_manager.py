@@ -21,6 +21,8 @@ from datetime import datetime
 from typing import Any, Dict, Optional
 from copy import deepcopy
 
+from app_paths import get_app_dir, get_backup_dir
+
 
 # 配置版本
 CONFIG_VERSION = "2.3.1"
@@ -117,7 +119,7 @@ class ConfigManager:
         self.legacy_config_path = Path(__file__).parent / 'translator_config.json'
 
         if backup_dir is None:
-            backup_dir = self.config_path.parent / 'config_backups'
+            backup_dir = get_backup_dir()
 
         self.backup_dir = Path(backup_dir)
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
@@ -137,17 +139,7 @@ class ConfigManager:
     @staticmethod
     def _default_app_dir() -> Path:
         """返回用户级配置目录，避免把运行态配置提交到仓库。"""
-        if os.name == 'nt':
-            appdata = os.getenv('APPDATA')
-            if appdata:
-                return Path(appdata) / 'BookTranslator'
-            return Path.home() / 'AppData' / 'Roaming' / 'BookTranslator'
-
-        xdg_config_home = os.getenv('XDG_CONFIG_HOME')
-        if xdg_config_home:
-            return Path(xdg_config_home) / 'book_translator'
-
-        return Path.home() / '.config' / 'book_translator'
+        return get_app_dir()
 
     @classmethod
     def _default_config_path(cls) -> Path:
@@ -201,6 +193,35 @@ class ConfigManager:
             return base64.b64decode(encoded.encode()).decode()
         except:
             return value
+
+    def _transform_sensitive_fields(self, config: Dict, decoder: bool = False) -> Dict:
+        """对敏感字段进行轻量编码/解码。
+
+        注意：这不是强加密，只是避免把敏感信息以明文形式直接落盘。
+        """
+        config = deepcopy(config)
+        transform = self._decode_key if decoder else self._encode_key
+
+        for provider in config.get('api_configs', {}).values():
+            if isinstance(provider, dict) and provider.get('api_key'):
+                provider['api_key'] = transform(provider['api_key'])
+
+        for model in config.get('custom_local_models', {}).values():
+            if isinstance(model, dict) and model.get('api_key'):
+                model['api_key'] = transform(model['api_key'])
+
+        zlib = config.get('online_search', {}).get('zlibrary', {})
+        for field in ('email', 'password', 'cookie'):
+            if zlib.get(field):
+                zlib[field] = transform(zlib[field])
+
+        return config
+
+    def _encode_sensitive_values(self, config: Dict) -> Dict:
+        return self._transform_sensitive_fields(config, decoder=False)
+
+    def _decode_sensitive_values(self, config: Dict) -> Dict:
+        return self._transform_sensitive_fields(config, decoder=True)
 
     def get(self, key: str, default: Any = None) -> Any:
         """
@@ -311,7 +332,7 @@ class ConfigManager:
                 return False
 
             with open(self.config_path, 'r', encoding='utf-8') as f:
-                loaded = json.load(f)
+                loaded = self._decode_sensitive_values(json.load(f))
 
             # 版本检查和迁移
             loaded_version = loaded.get('version', '1.0')
@@ -355,8 +376,9 @@ class ConfigManager:
 
             # 保存配置
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
+            disk_config = self._encode_sensitive_values(deepcopy(self._config))
             with open(self.config_path, 'w', encoding='utf-8') as f:
-                json.dump(self._config, f, indent=2, ensure_ascii=False)
+                json.dump(disk_config, f, indent=2, ensure_ascii=False)
 
             return True
 
@@ -400,7 +422,7 @@ class ConfigManager:
         for backup in backups:
             try:
                 with open(backup, 'r', encoding='utf-8') as f:
-                    loaded = json.load(f)
+                    loaded = self._decode_sensitive_values(json.load(f))
 
                 self._config = self._merge_with_defaults(loaded)
                 print(f"✓ 已从备份恢复: {backup.name}")
