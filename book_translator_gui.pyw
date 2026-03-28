@@ -70,6 +70,7 @@ except ImportError:
     REQUESTS_SUPPORT = False
 
 from file_processor import FileProcessor
+from app_paths import get_runtime_file
 from config_manager import ConfigManager, get_config_manager
 from translation_memory import TranslationMemory, get_translation_memory
 from glossary_manager import GlossaryManager, get_glossary_manager
@@ -326,7 +327,8 @@ class BookTranslatorGUI:
         # 初始化辅助模块
         self.file_processor = FileProcessor()
         self.web_importer = WebImporter()
-        self.progress_cache_path = Path(__file__).parent / 'translation_cache.json'
+        self.progress_cache_path = get_runtime_file('translation_cache.json')
+        self.batch_queue_path = get_runtime_file('batch_tasks.json')
 
         # 初始化新模块
         self.config_manager = get_config_manager()
@@ -405,7 +407,7 @@ class BookTranslatorGUI:
     def load_batch_queue(self):
         """加载批量任务列表"""
         try:
-            path = Path("batch_tasks.json")
+            path = self.batch_queue_path
             if path.exists():
                 with open(path, 'r', encoding='utf-8') as f:
                     self.batch_queue = json.load(f)
@@ -416,7 +418,8 @@ class BookTranslatorGUI:
     def save_batch_queue(self):
         """保存批量任务列表"""
         try:
-            with open("batch_tasks.json", 'w', encoding='utf-8') as f:
+            self.batch_queue_path.parent.mkdir(parents=True, exist_ok=True)
+            with open(self.batch_queue_path, 'w', encoding='utf-8') as f:
                 json.dump(self.batch_queue, f, ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"Failed to save batch queue: {e}")
@@ -1441,7 +1444,7 @@ class BookTranslatorGUI:
         config = self.api_configs.get(api_type, {})
 
         if config.get('api_key'):
-            self.api_status_var.set(f"已配置 API Key: {config['api_key'][:10]}...")
+            self.api_status_var.set("已配置 API Key")
             self.api_status_label.config(foreground="green")
         else:
             self.api_status_var.set("未配置 API Key")
@@ -1493,6 +1496,7 @@ class BookTranslatorGUI:
                 'target_language': self.get_target_language(),
                 'resume_from_index': len(self.translated_segments)
             }
+            self.progress_cache_path.parent.mkdir(parents=True, exist_ok=True)
             with open(self.progress_cache_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False)
         except Exception as e:
@@ -2173,27 +2177,18 @@ class BookTranslatorGUI:
         return self._map_api_name_to_key(api_name)
 
     def save_config(self, show_message=False):
-        """保存配置到文件（自动保存）"""
-        config_file = Path(__file__).parent / 'translator_config.json'
+        """保存配置到用户配置目录。"""
         try:
-            # 保存主配置（v2.0格式）
-            with open(config_file, 'w', encoding='utf-8') as f:
-                data = {
-                    'version': CONFIG_VERSION,
-                    'api_configs': self.api_configs,
-                    'custom_local_models': self.custom_local_models,
-                    'target_language': self.get_target_language(),
-                    'selected_translation_api': self.translation_api_var.get(),
-                    'selected_analysis_api': self.analysis_api_var.get(),
-                    'selected_retry_api': self.retry_api_var.get()
-                }
-                json.dump(data, f, indent=2, ensure_ascii=False)
-
-            # 自动创建备份（保留最近3个）
-            self.backup_config()
+            self.config_manager.set('api_configs', deepcopy(self.api_configs), save=False)
+            self.config_manager.set('custom_local_models', deepcopy(self.custom_local_models), save=False)
+            self.config_manager.set('target_language', self.get_target_language(), save=False)
+            self.config_manager.set('selected_translation_api', self.translation_api_var.get(), save=False)
+            self.config_manager.set('selected_analysis_api', self.analysis_api_var.get(), save=False)
+            self.config_manager.set('selected_retry_api', self.retry_api_var.get(), save=False)
+            self.config_manager.save(create_backup=True)
 
             if show_message:
-                print(f"✓ 配置已自动保存: {config_file}")
+                print(f"✓ 配置已自动保存: {self.config_manager.config_path}")
         except Exception as e:
             error_msg = f"保存配置失败: {e}"
             print(error_msg)
@@ -2201,124 +2196,50 @@ class BookTranslatorGUI:
                 messagebox.showerror("错误", error_msg)
 
     def backup_config(self):
-        """自动备份配置（保留最近3个备份）"""
+        """兼容旧调用，备份已由 ConfigManager.save 统一处理。"""
         try:
-            config_file = Path(__file__).parent / 'translator_config.json'
-            if not config_file.exists():
-                return
-
-            backup_dir = Path(__file__).parent / 'config_backups'
-            backup_dir.mkdir(exist_ok=True)
-
-            # 生成备份文件名（时间戳）
-            from datetime import datetime
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            backup_file = backup_dir / f'config_backup_{timestamp}.json'
-
-            # 复制当前配置到备份
-            import shutil
-            shutil.copy2(config_file, backup_file)
-
-            # 只保留最近3个备份
-            backups = sorted(backup_dir.glob('config_backup_*.json'), reverse=True)
-            for old_backup in backups[3:]:
-                old_backup.unlink()
-
+            self.config_manager.save(create_backup=True)
         except Exception as e:
             print(f"备份配置失败: {e}")
 
     def load_config(self):
-        """从文件加载配置（自动加载，支持v1到v2迁移）"""
-        config_file = Path(__file__).parent / 'translator_config.json'
+        """从用户配置目录加载配置。"""
         try:
-            if config_file.exists():
-                with open(config_file, 'r', encoding='utf-8') as f:
-                    loaded_config = json.load(f)
+            loaded_config = self.config_manager.get_all()
+            api_config_section = loaded_config.get('api_configs', {})
+            self.merge_api_configs(api_config_section)
 
-                # 版本检测和迁移
-                if isinstance(loaded_config, dict):
-                    if 'version' not in loaded_config:
-                        # 旧版配置，执行迁移
-                        loaded_config = self.migrate_config_v1_to_v2(loaded_config)
-                        print("ℹ️ 已将配置文件从v1迁移到v2格式")
+            self.custom_local_models = loaded_config.get('custom_local_models', {})
+            target_language = loaded_config.get('target_language', DEFAULT_TARGET_LANGUAGE)
+            self.target_language_var.set(target_language or DEFAULT_TARGET_LANGUAGE)
 
-                    # 加载API配置
-                    api_config_section = loaded_config.get('api_configs', {})
-                    self.merge_api_configs(api_config_section)
+            saved_trans_api = loaded_config.get('selected_translation_api', 'Gemini API')
+            saved_analysis_api = loaded_config.get('selected_analysis_api', 'Gemini API')
+            saved_retry_api = loaded_config.get('selected_retry_api')
+            self.translation_api_var.set(saved_trans_api)
+            self.analysis_api_var.set(saved_analysis_api)
+            default_retry_api = "本地 LM Studio" if OPENAI_SUPPORT else saved_trans_api
+            self.retry_api_var.set(saved_retry_api or default_retry_api)
 
-                    # 加载自定义本地模型
-                    self.custom_local_models = loaded_config.get('custom_local_models', {})
-
-                    # 加载目标语言
-                    target_language = loaded_config.get('target_language', DEFAULT_TARGET_LANGUAGE)
-                    self.target_language_var.set(target_language or DEFAULT_TARGET_LANGUAGE)
-
-                    # 恢复API选择状态
-                    saved_trans_api = loaded_config.get('selected_translation_api', 'Gemini API')
-                    saved_analysis_api = loaded_config.get('selected_analysis_api', 'Gemini API')
-                    saved_retry_api = loaded_config.get('selected_retry_api')
-                    self.translation_api_var.set(saved_trans_api)
-                    self.analysis_api_var.set(saved_analysis_api)
-                    default_retry_api = "本地 LM Studio" if OPENAI_SUPPORT else saved_trans_api
-                    self.retry_api_var.set(saved_retry_api or default_retry_api)
-                else:
-                    self.merge_api_configs({})
-                    self.target_language_var.set(DEFAULT_TARGET_LANGUAGE)
-
-                self.update_api_status()
-                self.refresh_api_dropdowns()
-                configured_count = len([k for k, v in self.api_configs.items() if v.get('api_key')])
-                local_count = len(self.custom_local_models)
-                print(f"✓ 配置已加载: {configured_count} 个API已配置, {local_count} 个自定义本地模型")
-            else:
-                self.merge_api_configs({})
-                self.target_language_var.set(DEFAULT_TARGET_LANGUAGE)
-                print("ℹ️ 未找到配置文件，使用默认配置")
+            self.update_api_status()
+            self.refresh_api_dropdowns()
+            configured_count = len([k for k, v in self.api_configs.items() if v.get('api_key')])
+            local_count = len(self.custom_local_models)
+            print(f"✓ 配置已加载: {configured_count} 个API已配置, {local_count} 个自定义本地模型")
         except Exception as e:
             error_msg = f"加载配置失败: {e}"
             print(error_msg)
-            # 尝试从备份恢复
             if self.restore_from_backup():
                 print("✓ 已从备份恢复配置")
             else:
                 messagebox.showwarning("警告", f"{error_msg}\n将使用默认配置")
 
     def restore_from_backup(self):
-        """从最新备份恢复配置"""
+        """从最新备份恢复配置。"""
         try:
-            backup_dir = Path(__file__).parent / 'config_backups'
-            if not backup_dir.exists():
+            if not self.config_manager._restore_from_backup():
                 return False
-
-            backups = sorted(backup_dir.glob('config_backup_*.json'), reverse=True)
-            if not backups:
-                return False
-
-            # 使用最新的备份
-            latest_backup = backups[0]
-            with open(latest_backup, 'r', encoding='utf-8') as f:
-                loaded_config = json.load(f)
-                if isinstance(loaded_config, dict) and 'api_configs' in loaded_config:
-                    api_config_section = loaded_config.get('api_configs', {})
-                    target_language = loaded_config.get('target_language', DEFAULT_TARGET_LANGUAGE)
-                else:
-                    api_config_section = loaded_config if isinstance(loaded_config, dict) else {}
-                    target_language = (
-                        loaded_config.get('target_language', DEFAULT_TARGET_LANGUAGE)
-                        if isinstance(loaded_config, dict) else DEFAULT_TARGET_LANGUAGE
-                    )
-                self.merge_api_configs(api_config_section)
-                self.target_language_var.set(target_language or DEFAULT_TARGET_LANGUAGE)
-
-            # 恢复成功后保存为主配置
-            config_file = Path(__file__).parent / 'translator_config.json'
-            with open(config_file, 'w', encoding='utf-8') as f:
-                data = {
-                    'api_configs': self.api_configs,
-                    'target_language': self.get_target_language()
-                }
-                json.dump(data, f, indent=2, ensure_ascii=False)
-
+            self.load_config()
             return True
         except Exception as e:
             print(f"从备份恢复失败: {e}")
@@ -2503,6 +2424,8 @@ class BookTranslatorGUI:
 
             # 获取并发设置
             max_workers = self.concurrency_var.get()
+            remaining_segments = max(total_segments - start_index, 0)
+            max_workers = max(1, min(max_workers, remaining_segments or 1))
             use_context = max_workers == 1  # 只有单线程模式才启用上下文
             
             # 定义单个任务函数
@@ -2544,7 +2467,12 @@ class BookTranslatorGUI:
                             executor.shutdown(wait=False, cancel_futures=True)
                             break
                             
-                        idx, result, error = future.result()
+                        try:
+                            idx, result, error = future.result()
+                        except Exception as e:
+                            idx = futures[future]
+                            result = None
+                            error = str(e)
                         
                         if result:
                             self.translated_segments[idx] = result
@@ -2566,7 +2494,7 @@ class BookTranslatorGUI:
                         # 定期保存和更新UI (不必每段都更新，减少开销)
                         if completed_count % 5 == 0:
                             self.save_progress_cache()
-                            current_text = "\n\n".join(self.translated_segments[:completed_count])
+                            current_text = "\n\n".join(seg for seg in self.translated_segments if seg)
                             self.root.after(0, self.update_translated_text, current_text)
             else:
                 # 单线程模式 (保持原逻辑以支持上下文)
