@@ -8,7 +8,7 @@
 - 配置文件读写
 - 自动备份和恢复
 - 版本迁移
-- API Key 加密存储（可选）
+- API Key 轻量编码存储（可选）
 - 默认值管理
 """
 
@@ -51,7 +51,7 @@ DEFAULT_CONFIG = {
         },
         'claude': {
             'api_key': '',
-            'model': 'claude-3-haiku-20240307',
+            'model': 'claude-haiku-4-5-20251001',
             'temperature': 0.2
         },
         'deepseek': {
@@ -142,7 +142,7 @@ class ConfigManager:
         # 当前配置
         self._config: Dict = deepcopy(DEFAULT_CONFIG)
 
-        # 加密密钥（简单混淆，非安全加密）
+        # 轻量编码标记（仅避免明文显示，不提供真正安全性）
         self._key = "book_translator_2024"
 
         self._migrate_legacy_config()
@@ -171,7 +171,7 @@ class ConfigManager:
             print(f"⚠️ 迁移旧配置失败: {e}")
 
     def _apply_env_overrides(self, config: Dict) -> Dict:
-        """允许通过环境变量覆盖 API Key，避免把敏感信息写入文件。"""
+        """允许通过环境变量覆盖 API Key，优先使用环境变量保存敏感信息。"""
         env_map = {
             'gemini': 'GEMINI_API_KEY',
             'openai': 'OPENAI_API_KEY',
@@ -523,6 +523,11 @@ class ConfigManager:
                     base[key] = value
 
         merge(result, config)
+
+        claude_cfg = result.get('api_configs', {}).get('claude', {})
+        if claude_cfg.get('model') == 'claude-3-haiku-20240307':
+            claude_cfg['model'] = DEFAULT_CONFIG['api_configs']['claude']['model']
+
         return result
 
     def reset_to_defaults(self, save: bool = True):

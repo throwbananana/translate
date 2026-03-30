@@ -1,42 +1,83 @@
-# translate patch series (mailbox-style)
+# 书籍翻译工具
 
-This directory contains mailbox-style wrappers around the earlier unified diffs.
-They are meant to be easier to review and to convert into real commits later.
+一个面向长文档的桌面翻译工具，支持 PDF、TXT、EPUB、DOCX、Markdown，
+可接入 Gemini、OpenAI、Claude、DeepSeek 以及兼容 OpenAI API 的本地/自定义服务。
 
-## What these files are
+## 当前状态
 
-- `0000-cover-letter.patch`: series overview
-- `0001`..`0004`: one patch-message per logical change
+当前仓库仍处于快速迭代阶段。建议优先通过模板文件或环境变量配置 API Key，
+不要把本地运行态文件（如 `translator_config.json`、`translation_memory.db`）直接提交到仓库。
 
-## Important limitation
+## 功能概览
 
-These patches were generated from prepared diff files, not exported from a real
-Git commit history. The `From <sha>` values are synthetic content hashes used to
-make the files look and behave more like `git format-patch` output.
+- 多格式导入：PDF / TXT / EPUB / DOCX / Markdown
+- 多模型翻译：Gemini / OpenAI / Claude / DeepSeek / LM Studio / 兼容 OpenAI API 的自定义服务
+- 翻译记忆库与术语表
+- PDF OCR 扫描件支持
+- 批量任务与断点续传
 
-## Apply options
+## 安装
 
-### If you only want the file changes
+### 1) Python 依赖
 
 ```bash
-git apply 0001-secure-config-and-ignore-runtime-data.patch
+py -m pip install -r requirements.txt
 ```
 
-Use `git apply --check <patch>` first if you want to verify applicability.
+### 2) OCR 系统依赖
 
-### If you want to turn them into commits later
+OCR 不仅依赖 Python 包，还依赖系统组件：
 
-These mailbox-style files are best treated as review artifacts first. The most
-reliable path is:
+- `pdf2image` 需要 Poppler（确保 `pdftoppm` 可执行）
+- `pytesseract` 需要安装 Tesseract OCR 引擎，并确保 `tesseract` 在 PATH 中
 
-1. apply the original plain diffs or these mailbox diffs on a topic branch
-2. inspect and test the result
-3. create real commits with `git commit`
-4. export them again with `git format-patch`
+常见安装方式：
 
-## Suggested order
+- Windows：安装 Poppler 与 Tesseract，并把可执行文件目录加入 PATH
+- macOS：可使用 Homebrew 安装 `poppler` 与 `tesseract`
+- Linux：使用系统包管理器安装 `poppler-utils` 与 `tesseract-ocr`
 
-1. `0001` security and ignore rules
-2. `0002` runtime path and translation-memory relocation
-3. `0003` DOCX stabilization
-4. `0004` parallel batch hardening
+## 配置
+
+推荐优先使用环境变量保存敏感信息：
+
+- `GEMINI_API_KEY`
+- `OPENAI_API_KEY`
+- `ANTHROPIC_API_KEY`
+- `DEEPSEEK_API_KEY`
+- `CUSTOM_API_KEY`
+- `LM_STUDIO_API_KEY`
+
+如果你希望使用本地配置文件，请先复制模板：
+
+```bash
+copy translator_config.example.json translator_config.json
+```
+
+然后按需填写 API Key、模型和基础地址。
+
+## 默认模型说明
+
+- Gemini 默认：`gemini-2.5-flash`
+- OpenAI 默认：`gpt-3.5-turbo`
+- Claude 默认：`claude-haiku-4-5-20251001`
+- DeepSeek 默认：`deepseek-chat`
+- LM Studio 默认：`qwen2.5-7b-instruct-1m`
+
+## 运行
+
+```bash
+py book_translator_gui.pyw
+```
+
+## 仓库约定
+
+- `translator_config.example.json`：可提交的模板文件
+- `translator_config.json`：本地运行态配置，不应提交
+- `translation_memory.db`：本地翻译记忆库，不应提交
+
+## 后续建议
+
+- 为 `anthropic`、OCR、EPUB 等功能补充更细的可选依赖说明
+- 增加 CI 与 `pytest` 测试入口
+- 持续维护默认模型，避免使用已弃用模型
