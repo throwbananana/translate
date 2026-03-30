@@ -2,6 +2,7 @@
 # 核心依赖
 google-generativeai>=0.3.0
 openai>=1.0.0
+anthropic>=0.34.0
 requests>=2.31.0
 
 # 文件格式支持

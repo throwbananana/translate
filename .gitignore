@@ -6,6 +6,15 @@ Thumbs.db
 # Python
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Editor / IDE
+.vscode/
+.idea/
 
 # Browser Data (Recommended to ignore)
 chrome_profile/
@@ -13,6 +22,14 @@ chrome_profile/
 # Logs
 *.log
 npm-debug.log*
+
+# Build artifacts
+build/
+dist/
+
+# Local exports / downloads
+downloads/
+temp_exports/
 
 # Local runtime/config data
 translator_config.json
