@@ -8,12 +8,14 @@
 - 默认写入用户级运行目录，而非源码目录
 - 为多线程调用增加锁保护
 - 启用 WAL，降低并发读写冲突概率
+- 首次启动时可迁移仓库根目录中的旧 translation_memory.db
 """
 
 import sqlite3
 import hashlib
 import json
 import threading
+import shutil
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Tuple
@@ -25,18 +27,26 @@ from app_paths import get_runtime_file
 class TranslationMemory:
     """翻译记忆管理器"""
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str = None, legacy_db_path: str = None):
         """
         初始化翻译记忆数据库
 
         Args:
             db_path: 数据库文件路径，默认在用户运行目录下的 translation_memory.db
+            legacy_db_path: 旧版数据库文件路径，默认指向仓库根目录下的 translation_memory.db
         """
         if db_path is None:
             db_path = get_runtime_file('translation_memory.db')
 
+        if legacy_db_path is None:
+            legacy_db_path = Path(__file__).parent / 'translation_memory.db'
+
         self.db_path = Path(db_path)
+        self.legacy_db_path = Path(legacy_db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        self._migrate_legacy_db()
+
         self._lock = threading.RLock()
         self.conn = sqlite3.connect(str(self.db_path), check_same_thread=False, timeout=30)
         self.conn.row_factory = sqlite3.Row
@@ -46,6 +56,24 @@ class TranslationMemory:
             self.conn.execute('PRAGMA synchronous=NORMAL')
 
         self._init_db()
+
+    def _migrate_legacy_db(self):
+        """首次升级时，把仓库目录下的旧数据库复制到用户运行目录。"""
+        try:
+            if self.db_path.resolve() == self.legacy_db_path.resolve():
+                return
+        except Exception:
+            pass
+
+        if self.db_path.exists() or not self.legacy_db_path.exists():
+            return
+
+        try:
+            self.db_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(self.legacy_db_path, self.db_path)
+            print(f"ℹ️ 已迁移旧翻译记忆数据库到用户目录: {self.db_path}")
+        except Exception as e:
+            print(f"⚠️ 迁移旧翻译记忆数据库失败: {e}")
 
     def _init_db(self):
         """初始化数据库表结构"""
