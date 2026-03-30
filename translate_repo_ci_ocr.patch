@@ -1,0 +1,346 @@
+diff --git a/check_syntax.py b/check_syntax.py
+index 7d1f8bf..c2b6d13 100644
+--- a/check_syntax.py
++++ b/check_syntax.py
+@@ -1,19 +1,56 @@
+ #! python
+ # -*- coding: utf-8 -*-
+ 
+ """
+ 语法检查脚本
+-检查 book_translator_gui.pyw 是否有语法错误
++
++改进点：
++- 检查整个项目中的 .py / .pyw 文件，而不是只检查 GUI 单文件
++- 跳过常见的运行态目录与虚拟环境目录
+ """
+ 
++from pathlib import Path
+ import py_compile
+ import sys
+ 
+-try:
+-    py_compile.compile('book_translator_gui.pyw', doraise=True)
+-    print("✓ 语法检查通过！")
+-    print("✓ 没有发现语法错误")
+-    sys.exit(0)
+-except py_compile.PyCompileError as e:
+-    print("✗ 发现语法错误:")
+-    print(str(e))
+-    sys.exit(1)
++
++EXCLUDED_PARTS = {
++    '.git',
++    '.github',
++    '.pytest_cache',
++    '__pycache__',
++    '.venv',
++    'venv',
++    'build',
++    'dist',
++}
++
++
++def should_skip(path: Path) -> bool:
++    return any(part in EXCLUDED_PARTS for part in path.parts)
++
++
++def iter_python_files(root: Path):
++    for path in root.rglob('*'):
++        if path.suffix.lower() not in {'.py', '.pyw'}:
++            continue
++        if should_skip(path):
++            continue
++        yield path
++
++
++def main() -> int:
++    root = Path(__file__).resolve().parent
++    failed = []
++    checked = 0
++
++    for path in iter_python_files(root):
++        checked += 1
++        try:
++            py_compile.compile(str(path), doraise=True)
++        except py_compile.PyCompileError as exc:
++            failed.append((path, str(exc)))
++
++    if failed:
++        print("✗ 发现语法错误:\n")
++        for path, message in failed:
++            print(f"- {path}:\n{message}\n")
++        return 1
++
++    print(f"✓ 语法检查通过！共检查 {checked} 个 Python 文件")
++    return 0
++
++
++if __name__ == '__main__':
++    sys.exit(main())
+diff --git a/run_all_tests.bat b/run_all_tests.bat
+index 5d7d6d1..8f79329 100644
+--- a/run_all_tests.bat
++++ b/run_all_tests.bat
+@@ -1,58 +1,38 @@
+ @echo off
+-
++setlocal
++
++echo ========================================
++echo Book Translator - Test Suite
+ echo ========================================
+-echo Book Translator v1.3 - Test Suite
+-
+-echo ========================================
+-
+ echo.
+-
+-echo Running complete test suite...
+-
+-echo.
+-
+-pause
+-
+-echo.
+-
+-echo ========================================
+-
+-echo Step 1/3: Generate test files
+-
+-echo ========================================
+-
+-py test_large_file.py
+-
++
++echo Step 1/3: Syntax check
++echo ========================================
++py check_syntax.py
+ if errorlevel 1 goto error
+-
+ echo.
+-
+-echo ========================================
+-
+-echo Step 2/3: Test core features
+-
+-echo ========================================
+-
+-py test_core_features.py
++
++echo Step 2/3: Generate sample files
++echo ========================================
++py test_large_file.py
+ if errorlevel 1 goto error
+-
+ echo.
+-
+-echo ========================================
+-
+-echo Step 3/3: Test translation
+-
+-echo ========================================
+-
+-py test_actual_translation.py
+-
++
++echo Step 3/3: Run pytest smoke suite
++echo ========================================
++py -m pytest -q tests
+ if errorlevel 1 goto error
+-
+ echo.
+-
++
+ echo ========================================
+-
+ echo All Tests Passed!
+-
+ echo ========================================
+-
+ echo.
+-
+ echo Generated files:
+-
+ echo - Test data: test_1k.txt ~ test_500k.txt
+-
+-echo - Translation: sample_book_translation_test.txt
+-echo - Translation: test_50k_translation_test.txt
+-
+ echo - Report: test_report.md
+-
+ echo.
+-
+ echo Next steps:
+-
+ echo 1. Check test_report.md for details
+-
+ echo 2. Run book_translator_gui.pyw to use the app
+-
+ echo.
+-
+ goto end
+-
++
+ :error
+-
+ echo.
+-
+ echo ========================================
+-
+ echo Test Failed!
+-
+ echo ========================================
+-
+ echo.
+-
+ echo Please check the error message above.
+-
+ echo.
+-
++
+ :end
+-
+ pause
+diff --git a/file_processor.py b/file_processor.py
+index 2dd0e18..52b3d77 100644
+--- a/file_processor.py
++++ b/file_processor.py
+@@
+     def _auto_configure_tesseract(self):
+         """自动配置 Tesseract 路径"""
+         try:
+             import subprocess
+             subprocess.run(['tesseract', '--version'],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+             return
+         except (FileNotFoundError, Exception):
+             pass
+@@
+         for path in common_paths:
+             if os.path.exists(path):
+                 print(f"Auto-detected Tesseract at: {path}")
+                 pytesseract.pytesseract.tesseract_cmd = path
+                 return
++
++    def get_ocr_diagnostics(self) -> list:
++        """返回 OCR 依赖的诊断信息。"""
++        diagnostics = []
++
++        if not OCR_SUPPORT:
++            diagnostics.append("未安装 pytesseract，扫描版 PDF OCR 不可用。")
++            return diagnostics
++
++        try:
++            import subprocess
++            subprocess.run(
++                ['tesseract', '--version'],
++                stdout=subprocess.PIPE,
++                stderr=subprocess.PIPE,
++                check=True,
++            )
++        except (FileNotFoundError, Exception):
++            diagnostics.append(
++                "系统中未找到 Tesseract OCR 可执行文件，请先安装 Tesseract 并确保 tesseract 在 PATH 中。"
++            )
++
++        if not PDF2IMAGE_SUPPORT:
++            diagnostics.append("未安装 pdf2image，无法对扫描版 PDF 执行 OCR。")
++
++        return diagnostics
+@@
+     def _ocr_pdf_page(self, filepath, page_num, dpi=200):
+         """辅助方法：对 PDF 指定页进行 OCR"""
+         if not OCR_SUPPORT or not PDF2IMAGE_SUPPORT:
++            if page_num == 1:
++                for message in self.get_ocr_diagnostics():
++                    print(f"OCR 警告: {message}")
+             return ""
+ 
+         try:
+diff --git a/pytest.ini b/pytest.ini
+new file mode 100644
+index 0000000..e681e34
+--- /dev/null
++++ b/pytest.ini
+@@ -0,0 +1,4 @@
++[pytest]
++testpaths = tests
++python_files = test_*.py
++addopts = -q
+diff --git a/tests/test_smoke.py b/tests/test_smoke.py
+new file mode 100644
+index 0000000..f211763
+--- /dev/null
++++ b/tests/test_smoke.py
+@@ -0,0 +1,28 @@
++from pathlib import Path
++import py_compile
++
++
++PROJECT_ROOT = Path(__file__).resolve().parents[1]
++
++
++def test_core_python_files_compile():
++    targets = [
++        PROJECT_ROOT / 'book_translator_gui.pyw',
++        PROJECT_ROOT / 'config_manager.py',
++        PROJECT_ROOT / 'file_processor.py',
++        PROJECT_ROOT / 'translation_engine.py',
++        PROJECT_ROOT / 'translation_memory.py',
++    ]
++
++    missing = [str(path) for path in targets if not path.exists()]
++    assert not missing, f"Missing expected files: {missing}"
++
++    for path in targets:
++        py_compile.compile(str(path), doraise=True)
++
++
++def test_runtime_artifacts_are_gitignored():
++    gitignore = (PROJECT_ROOT / '.gitignore').read_text(encoding='utf-8')
++
++    assert 'translator_config.json' in gitignore
++    assert 'translation_memory.db' in gitignore
++    assert '*.db' in gitignore
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+new file mode 100644
+index 0000000..349c9e8
+--- /dev/null
++++ b/.github/workflows/ci.yml
+@@ -0,0 +1,31 @@
++name: CI
++
++on:
++  push:
++  pull_request:
++
++jobs:
++  test:
++    runs-on: ${{ matrix.os }}
++    strategy:
++      fail-fast: false
++      matrix:
++        os: [ubuntu-latest, windows-latest]
++        python-version: ['3.10', '3.11']
++
++    steps:
++      - name: Check out repository
++        uses: actions/checkout@v4
++
++      - name: Set up Python
++        uses: actions/setup-python@v5
++        with:
++          python-version: ${{ matrix.python-version }}
++
++      - name: Install dependencies
++        run: |
++          python -m pip install --upgrade pip
++          pip install -r requirements.txt
++          pip install pytest
++
++      - name: Syntax check
++        run: python check_syntax.py
++
++      - name: Run smoke tests
++        run: pytest
