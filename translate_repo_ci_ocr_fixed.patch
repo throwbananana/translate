@@ -1,0 +1,193 @@
+diff --git a/check_syntax.py b/check_syntax.py
+index 9a93549..1f39f21 100644
+--- a/check_syntax.py
++++ b/check_syntax.py
+@@ -1,19 +1,64 @@
+ #! python
+ # -*- coding: utf-8 -*-
++
+ """
+ 语法检查脚本
+-检查 book_translator_gui.pyw 是否有语法错误
++
++改进点：
++- 检查整个项目中的 .py / .pyw 文件，而不是只检查 GUI 单文件
++- 跳过常见的运行态目录与虚拟环境目录
+ """
+ 
++from pathlib import Path
+ import py_compile
+ import sys
+ 
+-try:
+-    py_compile.compile('book_translator_gui.pyw', doraise=True)
+-    print("✓ 语法检查通过！")
+-    print("✓ 没有发现语法错误")
+-    sys.exit(0)
+-except py_compile.PyCompileError as e:
+-    print("✗ 发现语法错误:")
+-    print(str(e))
+-    sys.exit(1)
++EXCLUDED_PARTS = {
++    '.git',
++    '.github',
++    '.pytest_cache',
++    '__pycache__',
++    '.venv',
++    'venv',
++    'build',
++    'dist',
++}
++
++
++def should_skip(path: Path) -> bool:
++    return any(part in EXCLUDED_PARTS for part in path.parts)
++
++
++def iter_python_files(root: Path):
++    for path in root.rglob('*'):
++        if path.suffix.lower() not in {'.py', '.pyw'}:
++            continue
++        if should_skip(path):
++            continue
++        yield path
++
++
++def main() -> int:
++    root = Path(__file__).resolve().parent
++    failed = []
++    checked = 0
++
++    for path in iter_python_files(root):
++        checked += 1
++        try:
++            py_compile.compile(str(path), doraise=True)
++        except py_compile.PyCompileError as exc:
++            failed.append((path, str(exc)))
++
++    if failed:
++        print("✗ 发现语法错误:\n")
++        for path, message in failed:
++            print(f"- {path}:\n{message}\n")
++        return 1
++
++    print(f"✓ 语法检查通过！共检查 {checked} 个 Python 文件")
++    return 0
++
++
++if __name__ == '__main__':
++    sys.exit(main())
+diff --git a/file_processor.py b/file_processor.py
+index f4348a3..0c07acc 100644
+--- a/file_processor.py
++++ b/file_processor.py
+@@ -117,6 +117,32 @@ class FileProcessor:
+                 pytesseract.pytesseract.tesseract_cmd = path
+                 return
+ 
++    def get_ocr_diagnostics(self) -> list:
++        """返回 OCR 依赖的诊断信息。"""
++        diagnostics = []
++
++        if not OCR_SUPPORT:
++            diagnostics.append("未安装 pytesseract，扫描版 PDF OCR 不可用。")
++            return diagnostics
++
++        try:
++            import subprocess
++            subprocess.run(
++                ['tesseract', '--version'],
++                stdout=subprocess.PIPE,
++                stderr=subprocess.PIPE,
++                check=True,
++            )
++        except (FileNotFoundError, Exception):
++            diagnostics.append(
++                "系统中未找到 Tesseract OCR 可执行文件，请先安装 Tesseract 并确保 tesseract 在 PATH 中。"
++            )
++
++        if not PDF2IMAGE_SUPPORT:
++            diagnostics.append("未安装 pdf2image，无法对扫描版 PDF 执行 OCR。")
++
++        return diagnostics
++
+     @classmethod
+     def get_supported_formats(cls) -> dict:
+         """获取当前支持的文件格式"""
+diff --git a/run_all_tests.bat b/run_all_tests.bat
+index d473e41..88cecc9 100644
+--- a/run_all_tests.bat
++++ b/run_all_tests.bat
+@@ -1,54 +1,47 @@
+ @echo off
++setlocal
++
+ echo ========================================
+-echo   Book Translator v1.3 - Test Suite
++echo Book Translator - Test Suite
+ echo ========================================
+ echo.
+-echo Running complete test suite...
+-echo.
+-pause
+ 
+-echo.
++echo Step 1/3: Syntax check
+ echo ========================================
+-echo Step 1/3: Generate test files
+-echo ========================================
+-py test_large_file.py
++py check_syntax.py
+ if errorlevel 1 goto error
+-
+ echo.
++
++echo Step 2/3: Generate sample files
+ echo ========================================
+-echo Step 2/3: Test core features
+-echo ========================================
+-py test_core_features.py
++py test_large_file.py
+ if errorlevel 1 goto error
+-
+ echo.
++
++echo Step 3/3: Run pytest smoke suite
+ echo ========================================
+-echo Step 3/3: Test translation
+-echo ========================================
+-py test_actual_translation.py
++py -m pytest -q tests
+ if errorlevel 1 goto error
+-
+ echo.
++
+ echo ========================================
+-echo   All Tests Passed!
++echo All Tests Passed!
+ echo ========================================
+ echo.
+ echo Generated files:
+-echo   - Test data: test_1k.txt ~ test_500k.txt
+-echo   - Translation: sample_book_translation_test.txt
+-echo   - Translation: test_50k_translation_test.txt
+-echo   - Report: test_report.md
++echo - Test data: test_1k.txt ~ test_500k.txt
++echo - Report: test_report.md
+ echo.
+ echo Next steps:
+-echo   1. Check test_report.md for details
+-echo   2. Run book_translator_gui.pyw to use the app
++echo 1. Check test_report.md for details
++echo 2. Run book_translator_gui.pyw to use the app
+ echo.
+ goto end
+ 
+ :error
+ echo.
+ echo ========================================
+-echo   Test Failed!
++echo Test Failed!
+ echo ========================================
+ echo.
+ echo Please check the error message above.
