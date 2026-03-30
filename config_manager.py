@@ -1,15 +1,15 @@
-#! python
+﻿#! python
 # -*- coding: utf-8 -*-
 """
-配置管理 (Config Manager) 模块
-统一管理应用程序配置，支持加密、备份和迁移
+閰嶇疆绠＄悊 (Config Manager) 妯″潡
+缁熶竴绠＄悊搴旂敤绋嬪簭閰嶇疆锛屾敮鎸佸姞瀵嗐€佸浠藉拰杩佺Щ
 
-功能：
-- 配置文件读写
-- 自动备份和恢复
-- 版本迁移
-- API Key 轻量编码存储（可选）
-- 默认值管理
+鍔熻兘锛?
+- 閰嶇疆鏂囦欢璇诲啓
+- 鑷姩澶囦唤鍜屾仮澶?
+- 鐗堟湰杩佺Щ
+- API Key 杞婚噺缂栫爜瀛樺偍锛堝彲閫夛級
+- 榛樿鍊肩鐞?
 """
 
 import json
@@ -24,13 +24,13 @@ from copy import deepcopy
 from app_paths import get_app_dir, get_backup_dir
 
 
-# 配置版本
+# 閰嶇疆鐗堟湰
 CONFIG_VERSION = "2.3.1"
 
-# 默认配置
+# 榛樿閰嶇疆
 DEFAULT_CONFIG = {
     'version': CONFIG_VERSION,
-    'target_language': '中文',
+    'target_language': '涓枃',
     'segment_size': 800,
     'preview_limit': 10000,
     'max_consecutive_failures': 3,
@@ -87,12 +87,12 @@ DEFAULT_CONFIG = {
         'enable_zlibrary': False
     },
     'custom_local_models': {},
-    'translation_style': '通俗小说 (Novel)',
+    'translation_style': '閫氫織灏忚 (Novel)',
     'concurrency': 1,
     'context_enabled': True,
     'selected_translation_api': 'Gemini API',
     'selected_analysis_api': 'Gemini API',
-    'selected_retry_api': '本地 LM Studio',
+    'selected_retry_api': '鏈湴 LM Studio',
     'ui': {
         'window_width': 950,
         'window_height': 750,
@@ -116,15 +116,15 @@ TRANSLATION_RUNTIME_KEYS = (
 
 
 class ConfigManager:
-    """配置管理器"""
+    """閰嶇疆绠＄悊鍣?""
 
     def __init__(self, config_path: str = None, backup_dir: str = None):
         """
-        初始化配置管理器
+        鍒濆鍖栭厤缃鐞嗗櫒
 
         Args:
-            config_path: 配置文件路径，默认在用户配置目录下
-            backup_dir: 备份目录，默认 config_backups/
+            config_path: 閰嶇疆鏂囦欢璺緞锛岄粯璁ゅ湪鐢ㄦ埛閰嶇疆鐩綍涓?
+            backup_dir: 澶囦唤鐩綍锛岄粯璁?config_backups/
         """
         if config_path is None:
             config_path = self._default_config_path()
@@ -139,20 +139,20 @@ class ConfigManager:
         self.config_path.parent.mkdir(parents=True, exist_ok=True)
         self.backup_dir.mkdir(parents=True, exist_ok=True)
 
-        # 当前配置
+        # 褰撳墠閰嶇疆
         self._config: Dict = deepcopy(DEFAULT_CONFIG)
 
-        # 轻量编码标记（仅避免明文显示，不提供真正安全性）
+        # 杞婚噺缂栫爜鏍囪锛堜粎閬垮厤鏄庢枃鏄剧ず锛屼笉鎻愪緵鐪熸瀹夊叏鎬э級
         self._key = "book_translator_2024"
 
         self._migrate_legacy_config()
 
-        # 自动加载配置
+        # 鑷姩鍔犺浇閰嶇疆
         self.load()
 
     @staticmethod
     def _default_app_dir() -> Path:
-        """返回用户级配置目录，避免把运行态配置提交到仓库。"""
+        """杩斿洖鐢ㄦ埛绾ч厤缃洰褰曪紝閬垮厤鎶婅繍琛屾€侀厤缃彁浜ゅ埌浠撳簱銆?""
         return get_app_dir()
 
     @classmethod
@@ -160,18 +160,18 @@ class ConfigManager:
         return cls._default_app_dir() / 'translator_config.json'
 
     def _migrate_legacy_config(self):
-        """首次升级时，把仓库目录下的旧配置复制到用户配置目录。"""
+        """棣栨鍗囩骇鏃讹紝鎶婁粨搴撶洰褰曚笅鐨勬棫閰嶇疆澶嶅埗鍒扮敤鎴烽厤缃洰褰曘€?""
         if self.config_path.exists() or not self.legacy_config_path.exists():
             return
 
         try:
             shutil.copy2(self.legacy_config_path, self.config_path)
-            print(f"ℹ️ 已迁移旧配置到用户目录: {self.config_path}")
+            print(f"鈩癸笍 宸茶縼绉绘棫閰嶇疆鍒扮敤鎴风洰褰? {self.config_path}")
         except Exception as e:
-            print(f"⚠️ 迁移旧配置失败: {e}")
+            print(f"鈿狅笍 杩佺Щ鏃ч厤缃け璐? {e}")
 
     def _apply_env_overrides(self, config: Dict) -> Dict:
-        """允许通过环境变量覆盖 API Key，优先使用环境变量保存敏感信息。"""
+        """鍏佽閫氳繃鐜鍙橀噺瑕嗙洊 API Key锛屼紭鍏堜娇鐢ㄧ幆澧冨彉閲忎繚瀛樻晱鎰熶俊鎭€?""
         env_map = {
             'gemini': 'GEMINI_API_KEY',
             'openai': 'OPENAI_API_KEY',
@@ -189,7 +189,7 @@ class ConfigManager:
         return config
 
     def _encode_key(self, value: str) -> str:
-        """简单编码 API Key（非安全加密，仅防止明文显示）"""
+        """绠€鍗曠紪鐮?API Key锛堥潪瀹夊叏鍔犲瘑锛屼粎闃叉鏄庢枃鏄剧ず锛?""
         if not value:
             return value
         try:
@@ -199,7 +199,7 @@ class ConfigManager:
             return value
 
     def _decode_key(self, value: str) -> str:
-        """解码 API Key"""
+        """瑙ｇ爜 API Key"""
         if not value or not value.startswith("enc:"):
             return value
         try:
@@ -209,9 +209,9 @@ class ConfigManager:
             return value
 
     def _transform_sensitive_fields(self, config: Dict, decoder: bool = False) -> Dict:
-        """对敏感字段进行轻量编码/解码。
+        """瀵规晱鎰熷瓧娈佃繘琛岃交閲忕紪鐮?瑙ｇ爜銆?
 
-        注意：这不是强加密，只是避免把敏感信息以明文形式直接落盘。
+        娉ㄦ剰锛氳繖涓嶆槸寮哄姞瀵嗭紝鍙槸閬垮厤鎶婃晱鎰熶俊鎭互鏄庢枃褰㈠紡鐩存帴钀界洏銆?
         """
         config = deepcopy(config)
         transform = self._decode_key if decoder else self._encode_key
@@ -239,14 +239,14 @@ class ConfigManager:
 
     def get(self, key: str, default: Any = None) -> Any:
         """
-        获取配置值
+        鑾峰彇閰嶇疆鍊?
 
         Args:
-            key: 配置键，支持点号分隔的嵌套键 (如 'api_configs.gemini.api_key')
-            default: 默认值
+            key: 閰嶇疆閿紝鏀寔鐐瑰彿鍒嗛殧鐨勫祵濂楅敭 (濡?'api_configs.gemini.api_key')
+            default: 榛樿鍊?
 
         Returns:
-            配置值
+            閰嶇疆鍊?
         """
         keys = key.split('.')
         value = self._config
@@ -260,37 +260,37 @@ class ConfigManager:
 
     def set(self, key: str, value: Any, save: bool = True):
         """
-        设置配置值
+        璁剧疆閰嶇疆鍊?
 
         Args:
-            key: 配置键，支持点号分隔的嵌套键
-            value: 配置值
-            save: 是否立即保存
+            key: 閰嶇疆閿紝鏀寔鐐瑰彿鍒嗛殧鐨勫祵濂楅敭
+            value: 閰嶇疆鍊?
+            save: 鏄惁绔嬪嵆淇濆瓨
         """
         keys = key.split('.')
         config = self._config
 
-        # 遍历到最后一个键的父级
+        # 閬嶅巻鍒版渶鍚庝竴涓敭鐨勭埗绾?
         for k in keys[:-1]:
             if k not in config:
                 config[k] = {}
             config = config[k]
 
-        # 设置值
+        # 璁剧疆鍊?
         config[keys[-1]] = value
 
         if save:
             self.save()
 
     def get_translation_runtime_profile(self) -> Dict[str, Any]:
-        """返回翻译运行时配置快照。"""
+        """杩斿洖缈昏瘧杩愯鏃堕厤缃揩鐓с€?""
         profile: Dict[str, Any] = {}
         for key in TRANSLATION_RUNTIME_KEYS:
             profile[key] = deepcopy(self.get(key, DEFAULT_CONFIG.get(key)))
         return profile
 
     def update_translation_runtime_profile(self, profile: Dict[str, Any], save: bool = True):
-        """批量更新翻译运行时配置。"""
+        """鎵归噺鏇存柊缈昏瘧杩愯鏃堕厤缃€?""
         if not profile:
             return
 
@@ -303,17 +303,17 @@ class ConfigManager:
 
     def get_api_config(self, provider: str) -> Dict:
         """
-        获取 API 配置
+        鑾峰彇 API 閰嶇疆
 
         Args:
-            provider: 提供商名称
+            provider: 鎻愪緵鍟嗗悕绉?
 
         Returns:
-            API 配置字典
+            API 閰嶇疆瀛楀吀
         """
         config = self.get(f'api_configs.{provider}', {})
 
-        # 解码 API Key
+        # 瑙ｇ爜 API Key
         if 'api_key' in config:
             config = dict(config)
             config['api_key'] = self._decode_key(config['api_key'])
@@ -322,14 +322,14 @@ class ConfigManager:
 
     def set_api_config(self, provider: str, config: Dict, save: bool = True):
         """
-        设置 API 配置
+        璁剧疆 API 閰嶇疆
 
         Args:
-            provider: 提供商名称
-            config: 配置字典
-            save: 是否立即保存
+            provider: 鎻愪緵鍟嗗悕绉?
+            config: 閰嶇疆瀛楀吀
+            save: 鏄惁绔嬪嵆淇濆瓨
         """
-        # 编码 API Key（可选）
+        # 缂栫爜 API Key锛堝彲閫夛級
         # config = dict(config)
         # if 'api_key' in config:
         #     config['api_key'] = self._encode_key(config['api_key'])
@@ -337,15 +337,15 @@ class ConfigManager:
         self.set(f'api_configs.{provider}', config, save=save)
 
     def get_custom_local_model(self, name: str) -> Optional[Dict]:
-        """获取自定义本地模型配置"""
+        """鑾峰彇鑷畾涔夋湰鍦版ā鍨嬮厤缃?""
         return self.get(f'custom_local_models.{name}')
 
     def set_custom_local_model(self, name: str, config: Dict, save: bool = True):
-        """设置自定义本地模型配置"""
+        """璁剧疆鑷畾涔夋湰鍦版ā鍨嬮厤缃?""
         self.set(f'custom_local_models.{name}', config, save=save)
 
     def remove_custom_local_model(self, name: str, save: bool = True):
-        """删除自定义本地模型配置"""
+        """鍒犻櫎鑷畾涔夋湰鍦版ā鍨嬮厤缃?""
         models = self.get('custom_local_models', {})
         if name in models:
             del models[name]
@@ -353,61 +353,61 @@ class ConfigManager:
 
     def load(self) -> bool:
         """
-        从文件加载配置
+        浠庢枃浠跺姞杞介厤缃?
 
         Returns:
-            是否加载成功
+            鏄惁鍔犺浇鎴愬姛
         """
         try:
             if not self.config_path.exists():
                 self._config = self._apply_env_overrides(deepcopy(DEFAULT_CONFIG))
-                print("ℹ️ 配置文件不存在，使用默认配置")
+                print("鈩癸笍 閰嶇疆鏂囦欢涓嶅瓨鍦紝浣跨敤榛樿閰嶇疆")
                 return False
 
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 loaded = self._decode_sensitive_values(json.load(f))
 
-            # 版本检查和迁移
+            # 鐗堟湰妫€鏌ュ拰杩佺Щ
             loaded_version = loaded.get('version', '1.0')
             if self._needs_migration(loaded_version):
                 loaded = self._migrate_config(loaded, loaded_version)
-                print(f"ℹ️ 配置已从 v{loaded_version} 迁移到 v{CONFIG_VERSION}")
+                print(f"鈩癸笍 閰嶇疆宸蹭粠 v{loaded_version} 杩佺Щ鍒?v{CONFIG_VERSION}")
 
-            # 合并默认值
+            # 鍚堝苟榛樿鍊?
             self._config = self._apply_env_overrides(self._merge_with_defaults(loaded))
 
-            print(f"✓ 配置已加载: {self.config_path}")
+            print(f"鉁?閰嶇疆宸插姞杞? {self.config_path}")
             return True
 
         except json.JSONDecodeError as e:
-            print(f"✗ 配置文件格式错误: {e}")
+            print(f"鉁?閰嶇疆鏂囦欢鏍煎紡閿欒: {e}")
             if self._restore_from_backup():
                 return True
             return False
 
         except Exception as e:
-            print(f"✗ 加载配置失败: {e}")
+            print(f"鉁?鍔犺浇閰嶇疆澶辫触: {e}")
             return False
 
     def save(self, create_backup: bool = True) -> bool:
         """
-        保存配置到文件
+        淇濆瓨閰嶇疆鍒版枃浠?
 
         Args:
-            create_backup: 是否创建备份
+            create_backup: 鏄惁鍒涘缓澶囦唤
 
         Returns:
-            是否保存成功
+            鏄惁淇濆瓨鎴愬姛
         """
         try:
-            # 更新版本号
+            # 鏇存柊鐗堟湰鍙?
             self._config['version'] = CONFIG_VERSION
 
-            # 创建备份
+            # 鍒涘缓澶囦唤
             if create_backup and self.config_path.exists():
                 self._create_backup()
 
-            # 保存配置
+            # 淇濆瓨閰嶇疆
             self.config_path.parent.mkdir(parents=True, exist_ok=True)
             disk_config = self._encode_sensitive_values(deepcopy(self._config))
             with open(self.config_path, 'w', encoding='utf-8') as f:
@@ -416,24 +416,24 @@ class ConfigManager:
             return True
 
         except Exception as e:
-            print(f"✗ 保存配置失败: {e}")
+            print(f"鉁?淇濆瓨閰嶇疆澶辫触: {e}")
             return False
 
     def _create_backup(self):
-        """创建配置备份"""
+        """鍒涘缓閰嶇疆澶囦唤"""
         try:
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             backup_file = self.backup_dir / f'config_backup_{timestamp}.json'
             shutil.copy2(self.config_path, backup_file)
 
-            # 只保留最近的备份
+            # 鍙繚鐣欐渶杩戠殑澶囦唤
             self._cleanup_backups(keep=5)
 
         except Exception as e:
-            print(f"⚠️ 创建备份失败: {e}")
+            print(f"鈿狅笍 鍒涘缓澶囦唤澶辫触: {e}")
 
     def _cleanup_backups(self, keep: int = 5):
-        """清理旧备份，只保留最近的几个"""
+        """娓呯悊鏃у浠斤紝鍙繚鐣欐渶杩戠殑鍑犱釜"""
         backups = sorted(
             self.backup_dir.glob('config_backup_*.json'),
             reverse=True
@@ -446,7 +446,7 @@ class ConfigManager:
                 pass
 
     def _restore_from_backup(self) -> bool:
-        """从备份恢复配置"""
+        """浠庡浠芥仮澶嶉厤缃?""
         backups = sorted(
             self.backup_dir.glob('config_backup_*.json'),
             reverse=True
@@ -458,9 +458,9 @@ class ConfigManager:
                     loaded = self._decode_sensitive_values(json.load(f))
 
                 self._config = self._merge_with_defaults(loaded)
-                print(f"✓ 已从备份恢复: {backup.name}")
+                print(f"鉁?宸蹭粠澶囦唤鎭㈠: {backup.name}")
 
-                # 保存恢复的配置
+                # 淇濆瓨鎭㈠鐨勯厤缃?
                 self.save(create_backup=False)
                 return True
 
@@ -470,7 +470,7 @@ class ConfigManager:
         return False
 
     def _needs_migration(self, version: str) -> bool:
-        """检查是否需要迁移"""
+        """妫€鏌ユ槸鍚﹂渶瑕佽縼绉?""
         try:
             current = tuple(map(int, CONFIG_VERSION.split('.')))
             loaded = tuple(map(int, version.split('.')))
@@ -479,18 +479,18 @@ class ConfigManager:
             return True
 
     def _migrate_config(self, config: Dict, from_version: str) -> Dict:
-        """迁移旧版本配置"""
+        """杩佺Щ鏃х増鏈厤缃?""
         # v1.x -> v2.x
         if from_version.startswith('1.') or 'api_configs' not in config:
-            # 旧格式可能直接存储 API 配置
+            # 鏃ф牸寮忓彲鑳界洿鎺ュ瓨鍌?API 閰嶇疆
             new_config = deepcopy(DEFAULT_CONFIG)
 
-            # 迁移旧的 API 配置
+            # 杩佺Щ鏃х殑 API 閰嶇疆
             for key in ['gemini', 'openai', 'custom', 'lm_studio']:
                 if key in config:
                     new_config['api_configs'][key].update(config[key])
 
-            # 迁移目标语言
+            # 杩佺Щ鐩爣璇█
             if 'target_language' in config:
                 new_config['target_language'] = config['target_language']
 
@@ -498,7 +498,7 @@ class ConfigManager:
 
         # v2.0 -> v2.1
         if from_version == '2.0':
-            # 添加新的配置项
+            # 娣诲姞鏂扮殑閰嶇疆椤?
             if 'use_translation_memory' not in config:
                 config['use_translation_memory'] = True
             if 'use_glossary' not in config:
@@ -512,7 +512,7 @@ class ConfigManager:
         return config
 
     def _merge_with_defaults(self, config: Dict) -> Dict:
-        """将加载的配置与默认值合并"""
+        """灏嗗姞杞界殑閰嶇疆涓庨粯璁ゅ€煎悎骞?""
         result = deepcopy(DEFAULT_CONFIG)
 
         def merge(base: Dict, override: Dict):
@@ -525,33 +525,33 @@ class ConfigManager:
         merge(result, config)
 
         claude_cfg = result.get('api_configs', {}).get('claude', {})
-        if claude_cfg.get('model') == 'claude-3-haiku-20240307':
+        if claude_cfg.get('model') == 'claude-haiku-4-5-20251001':
             claude_cfg['model'] = DEFAULT_CONFIG['api_configs']['claude']['model']
 
         return result
 
     def reset_to_defaults(self, save: bool = True):
-        """重置为默认配置"""
+        """閲嶇疆涓洪粯璁ら厤缃?""
         self._config = deepcopy(DEFAULT_CONFIG)
         if save:
             self.save()
 
     def export_config(self, output_path: str, include_keys: bool = False) -> bool:
         """
-        导出配置（可选择是否包含 API Key）
+        瀵煎嚭閰嶇疆锛堝彲閫夋嫨鏄惁鍖呭惈 API Key锛?
 
         Args:
-            output_path: 输出路径
-            include_keys: 是否包含 API Key
+            output_path: 杈撳嚭璺緞
+            include_keys: 鏄惁鍖呭惈 API Key
 
         Returns:
-            是否导出成功
+            鏄惁瀵煎嚭鎴愬姛
         """
         try:
             export_config = deepcopy(self._config)
 
             if not include_keys:
-                # 移除 API Key
+                # 绉婚櫎 API Key
                 for provider in export_config.get('api_configs', {}).values():
                     if 'api_key' in provider:
                         provider['api_key'] = ''
@@ -566,31 +566,31 @@ class ConfigManager:
             return True
 
         except Exception as e:
-            print(f"导出配置失败: {e}")
+            print(f"瀵煎嚭閰嶇疆澶辫触: {e}")
             return False
 
     def import_config(self, input_path: str, merge: bool = True) -> bool:
         """
-        导入配置
+        瀵煎叆閰嶇疆
 
         Args:
-            input_path: 输入路径
-            merge: 是否与现有配置合并（否则完全替换）
+            input_path: 杈撳叆璺緞
+            merge: 鏄惁涓庣幇鏈夐厤缃悎骞讹紙鍚﹀垯瀹屽叏鏇挎崲锛?
 
         Returns:
-            是否导入成功
+            鏄惁瀵煎叆鎴愬姛
         """
         try:
             with open(input_path, 'r', encoding='utf-8') as f:
                 imported = json.load(f)
 
             if merge:
-                # 合并配置
+                # 鍚堝苟閰嶇疆
                 def merge_dict(base, override):
                     for key, value in override.items():
                         if key in base and isinstance(base[key], dict) and isinstance(value, dict):
                             merge_dict(base[key], value)
-                        elif value:  # 只覆盖非空值
+                        elif value:  # 鍙鐩栭潪绌哄€?
                             base[key] = value
 
                 merge_dict(self._config, imported)
@@ -601,11 +601,11 @@ class ConfigManager:
             return True
 
         except Exception as e:
-            print(f"导入配置失败: {e}")
+            print(f"瀵煎叆閰嶇疆澶辫触: {e}")
             return False
 
     def get_ui_runtime_profile(self) -> Dict:
-        """返回 GUI 运行时会话所需的核心配置快照。"""
+        """杩斿洖 GUI 杩愯鏃朵細璇濇墍闇€鐨勬牳蹇冮厤缃揩鐓с€?""
         return {
             'api_configs': deepcopy(self.get('api_configs', {})),
             'custom_local_models': deepcopy(self.get('custom_local_models', {})),
@@ -626,7 +626,7 @@ class ConfigManager:
         selected_retry_api: Optional[str] = None,
         create_backup: bool = True,
     ) -> bool:
-        """批量更新 GUI 运行时配置，减少界面层逐项 set/save。"""
+        """鎵归噺鏇存柊 GUI 杩愯鏃堕厤缃紝鍑忓皯鐣岄潰灞傞€愰」 set/save銆?""
         updates = {
             'api_configs': api_configs,
             'custom_local_models': custom_local_models,
@@ -643,11 +643,11 @@ class ConfigManager:
         return self.save(create_backup=create_backup)
 
     def get_all(self) -> Dict:
-        """获取完整配置（副本）"""
+        """鑾峰彇瀹屾暣閰嶇疆锛堝壇鏈級"""
         return deepcopy(self._config)
 
     def list_backups(self) -> list:
-        """列出所有备份"""
+        """鍒楀嚭鎵€鏈夊浠?""
         backups = []
         for backup in sorted(self.backup_dir.glob('config_backup_*.json'), reverse=True):
             try:
@@ -663,11 +663,11 @@ class ConfigManager:
         return backups
 
 
-# 全局实例
+# 鍏ㄥ眬瀹炰緥
 _default_config_manager = None
 
 def get_config_manager() -> ConfigManager:
-    """获取默认配置管理器实例"""
+    """鑾峰彇榛樿閰嶇疆绠＄悊鍣ㄥ疄渚?""
     global _default_config_manager
     if _default_config_manager is None:
         _default_config_manager = ConfigManager()
@@ -675,28 +675,29 @@ def get_config_manager() -> ConfigManager:
 
 
 if __name__ == '__main__':
-    # 测试代码
-    print("配置管理模块测试")
+    # 娴嬭瘯浠ｇ爜
+    print("閰嶇疆绠＄悊妯″潡娴嬭瘯")
     print("=" * 50)
 
     cm = ConfigManager()
 
-    # 测试获取配置
-    print(f"\n目标语言: {cm.get('target_language')}")
-    print(f"分段大小: {cm.get('segment_size')}")
-    print(f"Gemini 模型: {cm.get('api_configs.gemini.model')}")
+    # 娴嬭瘯鑾峰彇閰嶇疆
+    print(f"\n鐩爣璇█: {cm.get('target_language')}")
+    print(f"鍒嗘澶у皬: {cm.get('segment_size')}")
+    print(f"Gemini 妯″瀷: {cm.get('api_configs.gemini.model')}")
 
-    # 测试设置配置
+    # 娴嬭瘯璁剧疆閰嶇疆
     cm.set('target_language', 'English', save=False)
-    print(f"修改后目标语言: {cm.get('target_language')}")
+    print(f"淇敼鍚庣洰鏍囪瑷€: {cm.get('target_language')}")
 
-    # 重置
-    cm.set('target_language', '中文', save=False)
+    # 閲嶇疆
+    cm.set('target_language', '涓枃', save=False)
 
-    # 列出备份
+    # 鍒楀嚭澶囦唤
     backups = cm.list_backups()
-    print(f"\n备份列表 ({len(backups)} 个):")
+    print(f"\n澶囦唤鍒楄〃 ({len(backups)} 涓?:")
     for b in backups[:3]:
         print(f"  - {b['name']}")
 
-    print("\n测试完成!")
+    print("\n娴嬭瘯瀹屾垚!")
+
