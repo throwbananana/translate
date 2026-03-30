@@ -93,6 +93,9 @@ DEFAULT_CONFIG = {
     'selected_translation_api': 'Gemini API',
     'selected_analysis_api': 'Gemini API',
     'selected_retry_api': '本地 LM Studio',
+    'security': {
+        'admin_password': ''
+    },
     'ui': {
         'window_width': 950,
         'window_height': 750,
@@ -171,6 +174,28 @@ class ConfigManager:
             value = os.getenv(env_name)
             if value and provider in config.get('api_configs', {}):
                 config['api_configs'][provider]['api_key'] = value
+
+        zlibrary = config.get('online_search', {}).get('zlibrary', {})
+        annas_archive = config.get('online_search', {}).get('annas_archive', {})
+
+        zlib_env_map = {
+            'email': 'ZLIBRARY_EMAIL',
+            'password': 'ZLIBRARY_PASSWORD',
+            'cookie': 'ZLIBRARY_COOKIE',
+            'domain': 'ZLIBRARY_DOMAIN',
+        }
+        for field, env_name in zlib_env_map.items():
+            value = os.getenv(env_name)
+            if value:
+                zlibrary[field] = value
+
+        annas_domain = os.getenv('ANNAS_ARCHIVE_DOMAIN')
+        if annas_domain:
+            annas_archive['domain'] = annas_domain
+
+        admin_password = os.getenv('BOOK_TRANSLATOR_ADMIN_PASSWORD')
+        if admin_password:
+            config.setdefault('security', {})['admin_password'] = admin_password
 
         return config
 
@@ -306,6 +331,11 @@ class ConfigManager:
     def get_custom_local_model(self, name: str) -> Optional[Dict]:
         """获取自定义本地模型配置"""
         return self.get(f'custom_local_models.{name}')
+
+    def get_admin_password(self) -> str:
+        """获取管理员密码（如果已配置）。"""
+        value = self.get('security.admin_password', '')
+        return str(value or '')
 
     def set_custom_local_model(self, name: str, config: Dict, save: bool = True):
         """设置自定义本地模型配置"""

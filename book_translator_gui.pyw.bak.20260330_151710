@@ -25,7 +25,6 @@ import re
 import json
 import shutil
 from copy import deepcopy
-import hmac
 import hashlib
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -3337,23 +3336,6 @@ class BookTranslatorGUI:
         else:
             raise ValueError(f"不支持的解析API类型: {api_type}")
 
-    def generate_text_with_selected_api(self, prompt, preferred_api_type=None):
-        """使用当前选中的解析 API 进行通用文本生成。"""
-        api_type = preferred_api_type or self.get_analysis_api_type()
-
-        if api_type in self.custom_local_models:
-            return self._analyze_with_custom_local_model(api_type, prompt)
-        elif api_type == 'gemini':
-            return self._analyze_with_gemini(prompt)
-        elif api_type == 'openai':
-            return self._analyze_with_openai(prompt)
-        elif api_type == 'custom':
-            return self._analyze_with_custom_api(prompt)
-        elif api_type == 'lm_studio':
-            return self._analyze_with_lm_studio(prompt)
-        else:
-            raise ValueError(f"不支持的文本生成 API 类型: {api_type}")
-
     def _analyze_with_custom_local_model(self, model_key, prompt):
         """使用自定义本地模型进行解析"""
         if not OPENAI_SUPPORT:
@@ -3849,26 +3831,25 @@ class BookTranslatorGUI:
                         "\n"
                         f"书籍片段：\n{preview_text}..."
                     )
-                    # 3. 调用当前选中的文本生成 API
+                    
+                    # 3. 调用翻译引擎 (复用当前配置的解析/翻译API)
+                    # 优先使用解析API，其次翻译API
                     api_type = self.get_analysis_api_type()
-                    if api_type not in self.custom_local_models and not self.api_configs.get(api_type, {}).get('api_key'):
+                    if not self.api_configs[api_type].get('api_key'):
                         api_type = self.get_translation_api_type()
-
-                    strict_json_prompt = (
-                        "你是一个专业的图书管理员。请严格返回 JSON 对象，不要输出 Markdown 代码块，也不要附加解释。
-
-"
-                        + prompt
+                        
+                    response = self.translation_engine.translate(
+                        text=prompt,
+                        source_lang="Auto",
+                        target_lang="JSON", # Hint for JSON
+                        api_type=api_type,
+                        api_config=self.api_configs[api_type]
                     )
-                    response = self.generate_text_with_selected_api(strict_json_prompt, preferred_api_type=api_type)
                     
                     # 4. 解析 JSON
                     # 简单的 JSON 提取逻辑
                     try:
-                        match = re.search(r'\{.*\}', response, re.DOTALL)
-                        if not match:
-                            raise ValueError("AI 未返回有效 JSON")
-                        json_str = match.group(0)
+                        json_str = re.search(r'\{.*\}', response, re.DOTALL).group(0)
                         data = json.loads(json_str)
                         
                         # 回到主线程更新 UI
@@ -3933,21 +3914,10 @@ class BookTranslatorGUI:
         btn = ttk.Button(frame, text="立即分享 (公开)", command=do_upload)
         btn.pack(pady=20, fill=tk.X)
 
-        def open_admin_audit(self):
+    def open_admin_audit(self):
         """打开管理员管理界面（用于删除记录）"""
-        expected_password = (self.config_manager.get_admin_password() or "").strip()
-        if not expected_password:
-            messagebox.showwarning(
-                "未启用",
-                "图书馆管理功能未启用。
-请通过环境变量 BOOK_TRANSLATOR_ADMIN_PASSWORD 或配置项 security.admin_password 设置管理员密码。"
-            )
-            return
-
         pwd = simpledialog.askstring("管理员登录", "请输入管理员密码:", show="*")
-        if pwd is None:
-            return
-        if not hmac.compare_digest(pwd, expected_password):
+        if pwd != "admin":
             messagebox.showerror("错误", "密码错误")
             return
             

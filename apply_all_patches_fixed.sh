@@ -1,26 +1,49 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-git apply --check 0001-project-hardening-readme-deps-tests-ci-fixed.patch
-git apply --check 0002-runtime-bugfixes-resume-autofill-batch.patch
-git apply --check 0003-modularization-prep-extract-pure-helper-functions.patch
-git apply --check 0004-modularization-extract-api-selection-and-dispatch.patch
-git apply --check 0005-modularization-extract-analysis-api-implementations.patch
-git apply --check 0006-modularization-extract-runtime-state-persistence.patch
-git apply --check 0007-modularization-extract-export-helpers.patch
-git apply --check 0008-modularization-extract-library-ui-helpers.patch
-git apply --check 0009-modularization-extract-ui-view-helpers.patch
+PATCH_FILES=(
+  "0001-project-hardening-readme-deps-tests-ci-repaired.patch"
+)
 
-git apply 0001-project-hardening-readme-deps-tests-ci-fixed.patch
-git apply 0002-runtime-bugfixes-resume-autofill-batch.patch
-git apply 0003-modularization-prep-extract-pure-helper-functions.patch
-git apply 0004-modularization-extract-api-selection-and-dispatch.patch
-git apply 0005-modularization-extract-analysis-api-implementations.patch
-git apply 0006-modularization-extract-runtime-state-persistence.patch
-git apply 0007-modularization-extract-export-helpers.patch
-git apply 0008-modularization-extract-library-ui-helpers.patch
-git apply 0009-modularization-extract-ui-view-helpers.patch
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "Not a git repository."
+  exit 1
+fi
 
-python -m pip install -r requirements.txt
-python -m pip install -r requirements-dev.txt
-pytest -q
+if [[ -n "$(git status --porcelain)" ]]; then
+  echo "Working tree is not clean. Commit or stash your changes first."
+  exit 1
+fi
+
+for patch in "${PATCH_FILES[@]}"; do
+  if [[ ! -f "$patch" ]]; then
+    echo "Missing patch file: $patch"
+    exit 1
+  fi
+done
+
+echo "Checking patch applicability..."
+if git apply --check "0001-project-hardening-readme-deps-tests-ci-repaired.patch"; then
+  git apply "0001-project-hardening-readme-deps-tests-ci-repaired.patch"
+  echo
+  echo "Patch applied successfully."
+  if [[ -f requirements.txt ]]; then
+    python -m pip install -r requirements.txt
+  fi
+  if [[ -f requirements-dev.txt ]]; then
+    python -m pip install -r requirements-dev.txt
+  fi
+  if command -v pytest >/dev/null 2>&1; then
+    pytest -q
+  fi
+  exit 0
+fi
+
+echo
+echo "Patch does not apply cleanly."
+echo "This usually means the target tree already contains these changes"
+echo "or has diverged from the baseline the patch was generated from."
+echo
+echo "If you are running this inside throwbananana/translate main, that is expected:"
+echo "the repository already contains most or all of this patch content."
+exit 1

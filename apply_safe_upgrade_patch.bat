@@ -6,39 +6,29 @@ if not exist .git (
   exit /b 1
 )
 
-for /f %%i in ('git status --porcelain') do (
-  echo Working tree is not clean. Commit or stash your changes first.
-  exit /b 1
-)
-
 if not exist 0001-project-hardening-readme-deps-tests-ci-repaired.patch (
   echo Missing patch file: 0001-project-hardening-readme-deps-tests-ci-repaired.patch
   exit /b 1
 )
 
-echo Checking patch applicability...
 git apply --check 0001-project-hardening-readme-deps-tests-ci-repaired.patch
 if errorlevel 1 goto :not_applicable
 
 git apply 0001-project-hardening-readme-deps-tests-ci-repaired.patch
 if errorlevel 1 goto :error
 
-echo.
-echo Patch applied successfully.
-
 if exist requirements.txt py -m pip install -r requirements.txt
 if exist requirements-dev.txt py -m pip install -r requirements-dev.txt
 py -m pytest -q
 
+echo.
+echo Patch applied successfully.
 goto :end
 
 :not_applicable
 echo.
 echo Patch does not apply cleanly.
-echo This usually means the target tree already contains these changes
-echo or has diverged from the baseline the patch was generated from.
-echo.
-echo If you are running this inside throwbananana/translate main, that is expected.
+echo The current tree likely already contains these changes.
 exit /b 1
 
 :error

@@ -135,25 +135,53 @@ class TranslationEngine:
         """设置降级时使用的提供商"""
         self.fallback_provider = provider_name
 
+    def _is_builtin_config_ready(self, provider: str) -> bool:
+        config = self.api_configs.get(provider)
+        if not config:
+            return False
+
+        if provider == 'gemini':
+            return GEMINI_SUPPORT and bool(config.api_key and config.model)
+        if provider == 'openai':
+            return OPENAI_SUPPORT and bool(config.api_key and config.model)
+        if provider == 'claude':
+            return CLAUDE_SUPPORT and bool(config.api_key and config.model)
+        if provider == 'deepseek':
+            return OPENAI_SUPPORT and bool(config.api_key and config.model)
+        if provider == 'lm_studio':
+            return OPENAI_SUPPORT and bool(config.base_url and config.model)
+        if provider == 'custom':
+            return REQUESTS_SUPPORT and bool(config.base_url and config.model)
+        return False
+
+    def _is_custom_local_model_ready(self, provider: str) -> bool:
+        config = self.custom_local_models.get(provider)
+        return OPENAI_SUPPORT and bool(config and config.get('base_url') and config.get('model_id'))
+
+    def _select_provider(self, provider: Optional[str]) -> str:
+        if provider is not None:
+            if provider in self.custom_local_models and self._is_custom_local_model_ready(provider):
+                return provider
+            if provider in self.api_configs and self._is_builtin_config_ready(provider):
+                return provider
+            raise ValueError(f'提供商未配置完成或当前环境不可用: {provider}')
+
+        available = self.get_available_providers()
+        if not available:
+            raise ValueError('没有可用的翻译提供商')
+        return available[0]
+
     def get_available_providers(self) -> List[str]:
         """获取可用的翻译提供商列表"""
         providers = []
 
-        if GEMINI_SUPPORT and 'gemini' in self.api_configs:
-            providers.append('gemini')
-        if OPENAI_SUPPORT and 'openai' in self.api_configs:
-            providers.append('openai')
-        if CLAUDE_SUPPORT and 'claude' in self.api_configs:
-            providers.append('claude')
-        if OPENAI_SUPPORT and 'lm_studio' in self.api_configs:
-            providers.append('lm_studio')
-        if REQUESTS_SUPPORT and 'custom' in self.api_configs:
-            providers.append('custom')
-        if OPENAI_SUPPORT and 'deepseek' in self.api_configs:
-            providers.append('deepseek')
+        for provider in ('gemini', 'openai', 'claude', 'lm_studio', 'custom', 'deepseek'):
+            if self._is_builtin_config_ready(provider):
+                providers.append(provider)
 
-        # 自定义本地模型
-        providers.extend(self.custom_local_models.keys())
+        for provider in self.custom_local_models:
+            if self._is_custom_local_model_ready(provider):
+                providers.append(provider)
 
         return providers
 
@@ -199,18 +227,17 @@ class TranslationEngine:
                 )
 
         # 确定使用的提供商
-        if provider is None:
-            available = self.get_available_providers()
-            if not available:
-                return TranslationResult(
-                    source_text=text,
-                    translated_text="",
-                    target_lang=target_lang,
-                    provider="none",
-                    model="",
-                    error="没有可用的翻译提供商"
-                )
-            provider = available[0]
+        try:
+            provider = self._select_provider(provider)
+        except ValueError as exc:
+            return TranslationResult(
+                source_text=text,
+                translated_text="",
+                target_lang=target_lang,
+                provider=provider or "none",
+                model="",
+                error=str(exc)
+            )
 
         # 获取术语表提示
         glossary_prompt = ""
@@ -568,12 +595,11 @@ class TranslationEngine:
         Yields:
             翻译结果片段
         """
-        if provider is None:
-            available = self.get_available_providers()
-            if not available:
-                yield "[错误: 没有可用的翻译提供商]"
-                return
-            provider = available[0]
+        try:
+            provider = self._select_provider(provider)
+        except ValueError as exc:
+            yield f"[错误: {exc}]"
+            return
 
         # 获取术语表提示
         glossary_prompt = ""

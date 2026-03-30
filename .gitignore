@@ -37,6 +37,8 @@ translation_memory.db
 translation_cache.json
 batch_tasks.json
 config_backups/
+server_data/
 *.sqlite
 *.sqlite3
 *.db
+*.mbox
