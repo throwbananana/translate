@@ -1,0 +1,2736 @@
+From a7412e153da8fecc74cbe725f9e96cab678484c4 Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Mon, 30 Mar 2026 12:00:00 +0000
+Subject: [PATCH] project hardening: README, deps, pytest and CI
+
+- rewrite README to match the current runnable application
+- add missing anthropic runtime dependency
+- expand .gitignore for local exports and test artifacts
+- add a minimal pytest smoke suite
+- add a GitHub Actions workflow for automated tests
+
+---
+--- a/README.md+++ b/README.md@@ -1,42 +1,138 @@-# translate patch series (mailbox-style)
++# Book Translator
+ 
+-This directory contains mailbox-style wrappers around the earlier unified diffs.
+-They are meant to be easier to review and to convert into real commits later.
++一个面向桌面端的多格式书籍翻译工具，支持 GUI 操作、多种翻译 API、本地模型回退、翻译记忆、术语表、批量任务和多种导出方式。
+ 
+-## What these files are
++> 当前仓库主体代码已经不是“patch series 目录”，而是实际可运行的应用程序。本 README 以当前代码状态为准。
+ 
+-- `0000-cover-letter.patch`: series overview
+-- `0001`..`0004`: one patch-message per logical change
++## 功能概览
+ 
+-## Important limitation
++- 支持输入格式：TXT、Markdown、PDF、EPUB、DOCX、RTF
++- 支持翻译提供商：Gemini、OpenAI、Claude、DeepSeek、LM Studio、兼容 OpenAI 的自定义接口
++- 支持自定义本地模型与云端额度耗尽后的回退
++- 翻译记忆库（TM）与术语表注入
++- 失败段落重试 / 人工修正
++- 批量翻译任务与断点续传
++- 网页导入、在线书源搜索、社区图书馆
++- 导出纯文本、双语 EPUB、双语 DOCX、有声书、解析结果
+ 
+-These patches were generated from prepared diff files, not exported from a real
+-Git commit history. The `From <sha>` values are synthetic content hashes used to
+-make the files look and behave more like `git format-patch` output.
++## 快速开始
+ 
+-## Apply options
++### 1. 安装 Python
+ 
+-### If you only want the file changes
++推荐 Python 3.10 及以上。
++
++### 2. 安装依赖
+ 
+ ```bash
+-git apply 0001-secure-config-and-ignore-runtime-data.patch
++py -m pip install -r requirements.txt
+ ```
+ 
+-Use `git apply --check <patch>` first if you want to verify applicability.
++如果你要运行测试：
+ 
+-### If you want to turn them into commits later
++```bash
++py -m pip install -r requirements-dev.txt
++```
+ 
+-These mailbox-style files are best treated as review artifacts first. The most
+-reliable path is:
++### 3. 启动程序
+ 
+-1. apply the original plain diffs or these mailbox diffs on a topic branch
+-2. inspect and test the result
+-3. create real commits with `git commit`
+-4. export them again with `git format-patch`
++Windows 下可直接双击：
+ 
+-## Suggested order
++```bash
++start.bat
++```
+ 
+-1. `0001` security and ignore rules
+-2. `0002` runtime path and translation-memory relocation
+-3. `0003` DOCX stabilization
+-4. `0004` parallel batch hardening
++或者命令行启动：
++
++```bash
++py book_translator_gui.pyw
++```
++
++## 依赖说明
++
++### 必选 Python 依赖
++
++- `google-generativeai`
++- `openai`
++- `anthropic`
++- `requests`
++- `PyPDF2`
++- `pdfplumber`
++- `pdf2image`
++- `ebooklib`
++- `beautifulsoup4`
++- `python-docx`
++- `pytesseract`
++- `Pillow`
++
++### OCR / PDF 额外系统依赖
++
++以下能力不是仅装 Python 包就能完全工作：
++
++- `pdf2image` 依赖 **Poppler**
++- `pytesseract` 依赖 **Tesseract OCR**
++
++如果缺少系统组件，项目仍可运行，但扫描版 PDF 的 OCR 能力会受限。
++
++## 项目结构（建议理解路径）
++
++```text
++book_translator_gui.pyw   # 主 GUI 入口
++translation_engine.py     # 翻译引擎
++file_processor.py         # 多格式读取 / 分段 / OCR 回退
++config_manager.py         # 配置管理
++app_paths.py              # 用户级运行时目录
++web_importer.py           # URL 导入
++start.bat                 # Windows 启动脚本
++run_all_tests.bat         # 旧版手工测试入口
++tests/                    # 新增的基础 pytest 冒烟测试
++```
++
++## 运行时文件
++
++项目已经把大多数运行时数据迁移到用户配置目录，而不是源码仓库目录，例如：
++
++- 配置文件
++- 翻译缓存
++- 批量任务缓存
++- 备份目录
++- 本地数据库
++
++请不要把这些运行时文件重新提交进仓库。
++
++## 测试
++
++### 轻量冒烟测试
++
++```bash
++py -m pytest
++```
++
++### 旧版手工测试脚本
++
++仓库仍保留了基于 `.bat` 和脚本串联的测试方式：
++
++```bash
++run_all_tests.bat
++```
++
++它更适合本地人工验证，不等价于完整自动化测试。
++
++## 开发建议
++
++当前项目功能较多，后续建议优先做这些事情：
++
++1. 继续拆分 `book_translator_gui.pyw`
++2. 把 GUI 逻辑与业务逻辑进一步解耦
++3. 补充更多针对非 GUI 模块的自动化测试
++4. 为导出、在线搜索、社区分享增加更稳定的集成测试
++5. 建立发布说明与版本变更日志
++
++## 已知现状
++
++- 仓库历史中仍存在较多阶段性说明文件与旧测试脚本
++- GUI 主文件体量较大，维护成本较高
++- 一些功能依赖外部服务或本地系统组件，不能在纯 Python 环境下完全覆盖
++
++## License
++
++当前仓库未看到明确的开源许可证声明。若准备公开协作，建议补充 LICENSE 文件。
+--- a/requirements.txt+++ b/requirements.txt@@ -2,6 +2,7 @@ # 核心依赖
+ google-generativeai>=0.3.0
+ openai>=1.0.0
++anthropic>=0.34.0
+ requests>=2.31.0
+ 
+ # 文件格式支持
+--- a/.gitignore+++ b/.gitignore@@ -6,6 +6,15 @@ # Python
+ __pycache__/
+ *.py[cod]
++.pytest_cache/
++.coverage
++htmlcov/
++.venv/
++venv/
++
++# Editor / IDE
++.vscode/
++.idea/
+ 
+ # Browser Data (Recommended to ignore)
+ chrome_profile/
+@@ -13,6 +22,14 @@ # Logs
+ *.log
+ npm-debug.log*
++
++# Build artifacts
++build/
++dist/
++
++# Local exports / downloads
++downloads/
++temp_exports/
+ 
+ # Local runtime/config data
+ translator_config.json
+--- a//dev/null+++ b/requirements-dev.txt@@ -0,0 +1 @@+pytest>=8.0.0
+--- a//dev/null+++ b/pytest.ini@@ -0,0 +1,3 @@+[pytest]
++testpaths = tests
++python_files = test_*.py
+--- a//dev/null+++ b/tests/test_config_manager.py@@ -0,0 +1,29 @@+from pathlib import Path
++
++from config_manager import ConfigManager
++
++
++def test_config_manager_uses_temp_paths(tmp_path):
++    config_path = tmp_path / "translator_config.json"
++    backup_dir = tmp_path / "config_backups"
++
++    manager = ConfigManager(config_path=str(config_path), backup_dir=str(backup_dir))
++
++    manager.set("target_language", "English", save=False)
++    assert manager.get("target_language") == "English"
++
++    saved = manager.save(create_backup=False)
++    assert saved is True
++    assert config_path.exists()
++    assert backup_dir.exists()
++
++
++def test_config_manager_env_override(monkeypatch, tmp_path):
++    monkeypatch.setenv("GEMINI_API_KEY", "env-gemini-key")
++
++    manager = ConfigManager(
++        config_path=str(tmp_path / "translator_config.json"),
++        backup_dir=str(tmp_path / "config_backups"),
++    )
++
++    assert manager.get("api_configs.gemini.api_key") == "env-gemini-key"
+--- a//dev/null+++ b/tests/test_file_processor.py@@ -0,0 +1,22 @@+from file_processor import FileProcessor
++
++
++def test_split_text_into_segments_respects_max_length():
++    processor = FileProcessor(segment_size=50)
++    text = (
++        "第一段内容比较短。\n\n"
++        "第二段内容也比较短。\n\n"
++        "第三段内容依然比较短。"
++    )
++
++    segments = processor.split_text_into_segments(text, max_length=30)
++
++    assert segments
++    assert all(len(segment) <= 30 for segment in segments)
++
++
++def test_detect_language_basic_cases():
++    processor = FileProcessor()
++
++    assert processor.detect_language("这是一段中文文本。") == "zh"
++    assert processor.detect_language("This is an English sentence.") == "en"
+--- a//dev/null+++ b/.github/workflows/python-tests.yml@@ -0,0 +1,32 @@+name: python-tests
++
++on:
++  push:
++  pull_request:
++
++jobs:
++  test:
++    runs-on: ubuntu-latest
++    strategy:
++      fail-fast: false
++      matrix:
++        python-version: ["3.10", "3.11"]
++
++    steps:
++      - name: Checkout
++        uses: actions/checkout@v4
++
++      - name: Set up Python
++        uses: actions/setup-python@v5
++        with:
++          python-version: ${{ matrix.python-version }}
++
++      - name: Install dependencies
++        run: |
++          python -m pip install --upgrade pip
++          python -m pip install -r requirements.txt
++          python -m pip install -r requirements-dev.txt
++
++      - name: Run pytest smoke suite
++        run: |
++          pytest -q
+-- 
+2.39.0
+
+From 6a61ebafdb5e17399339a92c9f64f6d6fd18c4dc Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Mon, 30 Mar 2026 12:20:00 +0000
+Subject: [PATCH] bugfix: resume cache, metadata autofill and batch queue persistence
+
+- use FileProcessor for resume-cache reload so non-text formats can resume
+- persist batch-queue clearing to disk
+- reuse file filter definitions from FileProcessor in browse dialog
+- add generic text-generation API dispatcher for analysis-like tasks
+- fix community upload AI autofill to use supported API calls
+- add Claude / DeepSeek analysis paths for generic prompt tasks
+
+---
+diff --git a/book_translator_gui.pyw b/book_translator_gui.pyw
+--- a/book_translator_gui.pyw
++++ b/book_translator_gui.pyw
+@@
+     def browse_file(self):
+         """浏览并选择文件"""
+-        filetypes = [("所有支持的文件", "*.txt *.pdf *.epub")]
+-        if PDF_SUPPORT:
+-            filetypes.append(("PDF文件", "*.pdf"))
+-        if EPUB_SUPPORT:
+-            filetypes.append(("EPUB文件", "*.epub"))
+-        filetypes.append(("文本文件", "*.txt"))
++        filetypes = self.file_processor.get_file_filter()
+
+         filename = filedialog.askopenfilename(
+             title="选择要翻译的书籍",
+             filetypes=filetypes
+         )
+@@
+-        ttk.Button(btn_frame, text="清空列表", command=lambda: [self.batch_queue.clear(), self.update_batch_list()]).pack(side=tk.LEFT, padx=5)
++        ttk.Button(btn_frame, text="清空列表", command=self.clear_batch_queue).pack(side=tk.LEFT, padx=5)
+@@
+     def remove_batch_file(self):
+         """移除选中的批量任务"""
+         indices = self.batch_listbox.curselection()
+         if not indices: return
+@@
+         self.save_batch_queue()
+         self.update_batch_list()
++
++    def clear_batch_queue(self):
++        """清空批量任务列表并持久化到磁盘"""
++        self.batch_queue.clear()
++        self.save_batch_queue()
++        self.update_batch_list()
+@@
+         file_path = cache.get('file_path')
+         signature = cache.get('signature')
+         if not file_path or not Path(file_path).exists():
+             print("进度缓存对应的文件不存在，已忽略")
+             self.clear_progress_cache()
+             return
+
+         try:
+-            with open(file_path, 'r', encoding='utf-8') as rf:
+-                content = rf.read()
++            content = self.file_processor.read_file(file_path)
+         except Exception as e:
+             print(f"读取缓存文件失败: {e}")
+             self.clear_progress_cache()
+             return
+@@
+     def get_retry_api_type(self):
+         """获取失败段落重试时选择的API类型"""
+         api_name = self.retry_api_var.get()
+         return self._map_api_name_to_key(api_name)
++
++    def _is_api_ready(self, api_type):
++        """判断指定 API / 本地模型是否具备可调用条件"""
++        if api_type in self.custom_local_models:
++            config = self.custom_local_models.get(api_type, {})
++            return bool(config.get('base_url') and config.get('model_id'))
++
++        config = self.api_configs.get(api_type, {})
++        if not config:
++            return False
++
++        if api_type == 'custom':
++            return bool(config.get('base_url') and config.get('model'))
++        if api_type == 'lm_studio':
++            return OPENAI_SUPPORT and bool(config.get('base_url') and config.get('model'))
++
++        return bool(config.get('api_key') and config.get('model'))
++
++    def _get_preferred_text_api(self):
++        """选择一个当前可用的文本生成 API，优先解析 API，其次翻译 API。"""
++        candidates = [
++            self.get_analysis_api_type(),
++            self.get_translation_api_type(),
++            'lm_studio',
++            'gemini',
++        ]
++
++        for api_type in candidates:
++            if api_type and self._is_api_ready(api_type):
++                return api_type
++
++        raise ValueError("未找到可用的文本生成 API，请先配置解析 API 或翻译 API")
++
++    def _invoke_text_generation_api(self, api_type, prompt):
++        """调用指定 API 执行通用文本生成任务。"""
++        if api_type in self.custom_local_models:
++            return self._analyze_with_custom_local_model(api_type, prompt)
++        elif api_type == 'gemini':
++            return self._analyze_with_gemini(prompt)
++        elif api_type == 'openai':
++            return self._analyze_with_openai(prompt)
++        elif api_type == 'custom':
++            return self._analyze_with_custom_api(prompt)
++        elif api_type == 'lm_studio':
++            return self._analyze_with_lm_studio(prompt)
++        elif api_type == 'claude':
++            return self._analyze_with_claude(prompt)
++        elif api_type == 'deepseek':
++            return self._analyze_with_deepseek(prompt)
++        else:
++            raise ValueError(f"不支持的文本生成 API 类型: {api_type}")
+@@
+     def call_api_for_analysis(self, source_text, translated_text):
+         """调用API进行段落解析"""
+         api_type = self.get_analysis_api_type()
+         target_language = self.get_target_language()
+@@
+-        # 根据API类型调用对应的解析方法
+-        if api_type in self.custom_local_models:
+-            return self._analyze_with_custom_local_model(api_type, prompt)
+-        elif api_type == 'gemini':
+-            return self._analyze_with_gemini(prompt)
+-        elif api_type == 'openai':
+-            return self._analyze_with_openai(prompt)
+-        elif api_type == 'custom':
+-            return self._analyze_with_custom_api(prompt)
+-        elif api_type == 'lm_studio':
+-            return self._analyze_with_lm_studio(prompt)
+-        else:
+-            raise ValueError(f"不支持的解析API类型: {api_type}")
++        # 根据API类型调用对应的解析方法
++        return self._invoke_text_generation_api(api_type, prompt)
+@@
+     def _analyze_with_openai(self, prompt):
+         """使用OpenAI API进行解析"""
+         if not OPENAI_SUPPORT:
+             raise ImportError("缺少 openai 库")
+@@
+
+         return response.choices[0].message.content
++
++    def _analyze_with_claude(self, prompt):
++        """使用 Claude API 进行解析"""
++        if not CLAUDE_SUPPORT:
++            raise ImportError("缺少 anthropic 库")
++
++        api_key = self.api_configs['claude'].get('api_key', '')
++        model_name = self.api_configs['claude'].get('model', 'claude-3-haiku-20240307')
++
++        if not api_key:
++            raise ValueError("未配置 Claude API Key")
++
++        client = anthropic.Anthropic(api_key=api_key)
++        message = client.messages.create(
++            model=model_name,
++            max_tokens=2048,
++            system="你是一个专业的文本分析助手，擅长对翻译内容进行深度解析和讲解。",
++            messages=[
++                {"role": "user", "content": prompt}
++            ]
++        )
++
++        return message.content[0].text
++
++    def _analyze_with_deepseek(self, prompt):
++        """使用 DeepSeek API 进行解析"""
++        if not OPENAI_SUPPORT:
++            raise ImportError("缺少 openai 库")
++
++        api_key = self.api_configs['deepseek'].get('api_key', '')
++        model_name = self.api_configs['deepseek'].get('model', 'deepseek-chat')
++        base_url = self.api_configs['deepseek'].get('base_url', 'https://api.deepseek.com/v1')
++
++        if not api_key:
++            raise ValueError("未配置 DeepSeek API Key")
++
++        client = openai.OpenAI(api_key=api_key, base_url=base_url)
++        response = client.chat.completions.create(
++            model=model_name,
++            messages=[
++                {"role": "system", "content": "你是一个专业的文本分析助手，擅长对翻译内容进行深度解析和讲解。"},
++                {"role": "user", "content": prompt}
++            ],
++            temperature=0.3
++        )
++
++        return response.choices[0].message.content
+@@
+         def auto_fill_metadata():
+             path = file_var.get()
+             if not path or not os.path.exists(path):
+                 messagebox.showerror("错误", "请先选择有效文件")
+                 return
+@@
+                     prompt = (
+                         "你是一个专业的图书管理员。请分析以下书籍片段，并提取元数据。\n"
+                         "请严格返回 JSON 格式，包含以下字段：\n"
+                         "- title: 书名 (如果无法确定，根据内容拟定)\n"
+                         "- author: 作者 (如果未知，填 'Unknown')\n"
+@@
+                         f"书籍片段：\n{preview_text}..."
+                     )
+
+-                    # 3. 调用翻译引擎 (复用当前配置的解析/翻译API)
+-                    # 优先使用解析API，其次翻译API
+-                    api_type = self.get_analysis_api_type()
+-                    if not self.api_configs[api_type].get('api_key'):
+-                        api_type = self.get_translation_api_type()
+-                        
+-                    response = self.translation_engine.translate(
+-                        text=prompt,
+-                        source_lang="Auto",
+-                        target_lang="JSON", # Hint for JSON
+-                        api_type=api_type,
+-                        api_config=self.api_configs[api_type]
+-                    )
++                    # 3. 选择当前可用的文本生成 API 并执行元数据抽取
++                    api_type = self._get_preferred_text_api()
++                    response = self._invoke_text_generation_api(api_type, prompt)
+
+                     # 4. 解析 JSON
+                     # 简单的 JSON 提取逻辑
+                     try:
+                         json_str = re.search(r'\{.*\}', response, re.DOTALL).group(0)
+-- 
+2.39.0
+
+From 4010d8ae2efc39d893cd99e07ecf44499aaf64da Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Mon, 30 Mar 2026 12:40:00 +0000
+Subject: [PATCH] refactor prep: extract pure prompt/helper functions
+
+- extract prompt-building and JSON-extraction helpers into a standalone module
+- reduce GUI file size without touching stateful workflow logic
+- add focused tests for the new pure helper functions
+
+---
+diff --git a/book_translator_gui.pyw b/book_translator_gui.pyw
+--- a/book_translator_gui.pyw
++++ b/book_translator_gui.pyw
+@@ -78,6 +78,11 @@ from tm_editor import TMEditorDialog
+ from format_converter import FormatConverterDialog
+ from cloud_upload import CloudUploader
+ from community_manager import CommunityManager
++from task_prompt_helpers import (
++    build_analysis_prompt,
++    build_book_metadata_prompt,
++    extract_first_json_object,
++)
+
+ DEFAULT_TARGET_LANGUAGE = "中文"
+ DEFAULT_LM_STUDIO_CONFIG = {
+@@ -1940,25 +1945,10 @@ class BookTranslatorGUI:
+     def call_api_for_analysis(self, source_text, translated_text):
+         """调用API进行段落解析"""
+         api_type = self.get_analysis_api_type()
+-        target_language = self.get_target_language()
+-
+-        # 构建解析提示词
+-        prompt = f"""请对以下翻译内容进行详细解析和讲解。
+-
+-【原文】
+-{source_text}
+-
+-【译文】
+-{translated_text}
+-
+-请从以下角度进行解析：
+-1. 内容概要：简要概括这段文字的主要内容
+-2. 关键信息：指出其中的关键概念、人物、事件或论点
+-3. 翻译说明：如有特殊术语或表达，说明翻译的处理方式
+-4. 延伸思考：提供相关的背景知识或思考角度
+-
+-请用{target_language}回答。"""
++        prompt = build_analysis_prompt(
++            source_text=source_text,
++            translated_text=translated_text,
++            target_language=self.get_target_language()
++        )
+
+         # 根据API类型调用对应的解析方法
+         return self._invoke_text_generation_api(api_type, prompt)
+@@ -2316,16 +2306,7 @@ class BookTranslatorGUI:
+                     # 2. 构建 Prompt
+-                    prompt = (
+-                        "你是一个专业的图书管理员。请分析以下书籍片段，并提取元数据。\n"
+-                        "请严格返回 JSON 格式，包含以下字段：\n"
+-                        "- title: 书名 (如果无法确定，根据内容拟定)\n"
+-                        "- author: 作者 (如果未知，填 'Unknown')\n"
+-                        "- description: 200字以内的精彩简介，包含核心主题、风格和亮点。\n"
+-                        "\n"
+-                        f"书籍片段：\n{preview_text}..."
+-                    )
++                    prompt = build_book_metadata_prompt(preview_text)
+
+                     # 3. 选择当前可用的文本生成 API 并执行元数据抽取
+                     api_type = self._get_preferred_text_api()
+@@ -2333,11 +2314,8 @@ class BookTranslatorGUI:
+
+                     # 4. 解析 JSON
+-                    # 简单的 JSON 提取逻辑
+                     try:
+-                        json_str = re.search(r'\{.*\}', response, re.DOTALL).group(0)
+-                        data = json.loads(json_str)
+-                        
++                        data = extract_first_json_object(response)
++
+                         # 回到主线程更新 UI
+                         self.root.after(0, lambda: update_ui(data))
+                     except:
+diff --git a/task_prompt_helpers.py b/task_prompt_helpers.py
+new file mode 100644
+--- /dev/null
++++ b/task_prompt_helpers.py
+@@ -0,0 +1,71 @@
++#! python
++# -*- coding: utf-8 -*-
++"""纯函数级别的提示词与结构化输出辅助工具。
++
++这些函数不依赖 GUI 状态，适合逐步从超大 GUI 文件中抽离，
++便于单元测试与后续模块化重构。
++"""
++
++from __future__ import annotations
++
++import json
++import re
++from typing import Any, Dict
++
++
++def build_analysis_prompt(source_text: str, translated_text: str, target_language: str) -> str:
++    """构建段落解析提示词。"""
++    return f"""请对以下翻译内容进行详细解析和讲解。
++
++【原文】
++{source_text}
++
++【译文】
++{translated_text}
++
++请从以下角度进行解析：
++1. 内容概要：简要概括这段文字的主要内容
++2. 关键信息：指出其中的关键概念、人物、事件或论点
++3. 翻译说明：如有特殊术语或表达，说明翻译的处理方式
++4. 延伸思考：提供相关的背景知识或思考角度
++
++请用{target_language}回答。"""
++
++
++def build_book_metadata_prompt(preview_text: str) -> str:
++    """构建图书元数据自动识别提示词。"""
++    return (
++        "你是一个专业的图书管理员。请分析以下书籍片段，并提取元数据。\n"
++        "请严格返回 JSON 格式，包含以下字段：\n"
++        "- title: 书名 (如果无法确定，根据内容拟定)\n"
++        "- author: 作者 (如果未知，填 'Unknown')\n"
++        "- description: 200字以内的精彩简介，包含核心主题、风格和亮点。\n"
++        "\n"
++        f"书籍片段：\n{preview_text}..."
++    )
++
++
++def extract_first_json_object(text: str) -> Dict[str, Any]:
++    """从模型输出中提取第一个 JSON 对象。
++
++    支持输出前后带有说明文字或 Markdown 代码块的常见场景。
++    """
++    if not text or not text.strip():
++        raise ValueError("empty response")
++
++    cleaned = text.strip()
++    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
++    cleaned = re.sub(r"\s*```$", "", cleaned)
++
++    match = re.search(r"\{.*\}", cleaned, re.DOTALL)
++    if not match:
++        raise ValueError("no json object found in response")
++
++    return json.loads(match.group(0))
+diff --git a/tests/test_task_prompt_helpers.py b/tests/test_task_prompt_helpers.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_task_prompt_helpers.py
+@@ -0,0 +1,28 @@
++from task_prompt_helpers import (
++    build_analysis_prompt,
++    build_book_metadata_prompt,
++    extract_first_json_object,
++)
++
++
++def test_build_analysis_prompt_contains_core_sections():
++    prompt = build_analysis_prompt("原文A", "译文B", "中文")
++
++    assert "【原文】" in prompt
++    assert "【译文】" in prompt
++    assert "请用中文回答" in prompt
++
++
++def test_build_book_metadata_prompt_mentions_required_fields():
++    prompt = build_book_metadata_prompt("sample preview")
++
++    assert "title" in prompt
++    assert "author" in prompt
++    assert "description" in prompt
++
++
++def test_extract_first_json_object_handles_wrapped_output():
++    data = extract_first_json_object('''```json
++{"title":"Book","author":"Anon","description":"Desc"}
++```''')
++
++    assert data["title"] == "Book"
+-- 
+2.39.0
+
+From 26245c9e1f1acd7ffa3c4c99b5583a698d930612 Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Mon, 30 Mar 2026 13:00:00 +0000
+Subject: [PATCH] refactor: extract API selection and text-generation dispatch helpers
+
+- move API name mapping out of the GUI file
+- move API readiness checks and preferred-provider selection out of the GUI file
+- move text-generation handler selection into a standalone helper module
+- add focused tests for the extracted helper functions
+
+This patch is intended to be applied after 0001..0003.
+
+---
+diff --git a/book_translator_gui.pyw b/book_translator_gui.pyw
+--- a/book_translator_gui.pyw
++++ b/book_translator_gui.pyw
+@@ -83,6 +83,12 @@ from task_prompt_helpers import (
+     build_book_metadata_prompt,
+     extract_first_json_object,
+ )
++from api_selection_helpers import (
++    map_api_name_to_key,
++    is_api_ready,
++    get_preferred_text_api,
++    select_text_generation_handler,
++)
+
+ DEFAULT_TARGET_LANGUAGE = "中文"
+ DEFAULT_LM_STUDIO_CONFIG = {
+@@ -1010,24 +1016,7 @@ class BookTranslatorGUI:
+     def _map_api_name_to_key(self, api_name):
+         """将显示名称映射到API键"""
+-        if not api_name:
+-            return "gemini"
+-
+-        # 检查是否为自定义本地模型
+-        if api_name.startswith("[本地] "):
+-            display_name = api_name[5:]  # 去掉"[本地] "前缀
+-            for key, config in self.custom_local_models.items():
+-                if config.get('display_name') == display_name:
+-                    return key
+-
+-        # 内置API映射
+-        api_map = {
+-            "Gemini API": "gemini",
+-            "OpenAI API": "openai",
+-            "Claude API": "claude",
+-            "DeepSeek API": "deepseek",
+-            "本地 LM Studio": "lm_studio",
+-            "自定义API": "custom"
+-        }
+-        return api_map.get(api_name, "gemini")
++        return map_api_name_to_key(api_name, self.custom_local_models)
+@@ -1048,21 +1037,15 @@ class BookTranslatorGUI:
+     def _is_api_ready(self, api_type):
+         """判断指定 API / 本地模型是否具备可调用条件"""
+-        if api_type in self.custom_local_models:
+-            config = self.custom_local_models.get(api_type, {})
+-            return bool(config.get('base_url') and config.get('model_id'))
+-
+-        config = self.api_configs.get(api_type, {})
+-        if not config:
+-            return False
+-
+-        if api_type == 'custom':
+-            return bool(config.get('base_url') and config.get('model'))
+-        if api_type == 'lm_studio':
+-            return OPENAI_SUPPORT and bool(config.get('base_url') and config.get('model'))
+-
+-        return bool(config.get('api_key') and config.get('model'))
++        return is_api_ready(
++            api_type=api_type,
++            custom_local_models=self.custom_local_models,
++            api_configs=self.api_configs,
++            openai_support=OPENAI_SUPPORT,
++        )
+
+     def _get_preferred_text_api(self):
+         """选择一个当前可用的文本生成 API，优先解析 API，其次翻译 API。"""
+-        candidates = [
++        candidates = [
+             self.get_analysis_api_type(),
+             self.get_translation_api_type(),
+             'lm_studio',
+@@ -1070,15 +1053,26 @@ class BookTranslatorGUI:
+-        ]
+-
+-        for api_type in candidates:
+-            if api_type and self._is_api_ready(api_type):
+-                return api_type
+-
+-        raise ValueError("未找到可用的文本生成 API，请先配置解析 API 或翻译 API")
++        ]
++        return get_preferred_text_api(
++            candidate_api_types=candidates,
++            custom_local_models=self.custom_local_models,
++            api_configs=self.api_configs,
++            openai_support=OPENAI_SUPPORT,
++        )
+
+     def _invoke_text_generation_api(self, api_type, prompt):
+         """调用指定 API 执行通用文本生成任务。"""
+-        if api_type in self.custom_local_models:
+-            return self._analyze_with_custom_local_model(api_type, prompt)
+-        elif api_type == 'gemini':
+-            return self._analyze_with_gemini(prompt)
+-        elif api_type == 'openai':
+-            return self._analyze_with_openai(prompt)
+-        elif api_type == 'custom':
+-            return self._analyze_with_custom_api(prompt)
+-        elif api_type == 'lm_studio':
+-            return self._analyze_with_lm_studio(prompt)
+-        elif api_type == 'claude':
+-            return self._analyze_with_claude(prompt)
+-        elif api_type == 'deepseek':
+-            return self._analyze_with_deepseek(prompt)
+-        else:
+-            raise ValueError(f"不支持的文本生成 API 类型: {api_type}")
++        builtin_handlers = {
++            'gemini': self._analyze_with_gemini,
++            'openai': self._analyze_with_openai,
++            'custom': self._analyze_with_custom_api,
++            'lm_studio': self._analyze_with_lm_studio,
++            'claude': self._analyze_with_claude,
++            'deepseek': self._analyze_with_deepseek,
++        }
++
++        handler = select_text_generation_handler(
++            api_type=api_type,
++            custom_local_models=self.custom_local_models,
++            builtin_handlers=builtin_handlers,
++            custom_local_handler_factory=lambda key: lambda prompt_text: self._analyze_with_custom_local_model(key, prompt_text),
++        )
++        return handler(prompt)
+diff --git a/api_selection_helpers.py b/api_selection_helpers.py
+new file mode 100644
+--- /dev/null
++++ b/api_selection_helpers.py
+@@ -0,0 +1,95 @@
++#! python
++# -*- coding: utf-8 -*-
++"""API 选择与分发辅助工具。
++
++这些函数尽量保持无状态，便于从 GUI 中逐步抽离选择逻辑。
++"""
++
++from __future__ import annotations
++
++from typing import Callable, Dict, Iterable
++
++
++def map_api_name_to_key(api_name: str, custom_local_models: Dict[str, Dict]) -> str:
++    """将 UI 显示名称映射为内部 API 键。"""
++    if not api_name:
++        return "gemini"
++
++    if api_name.startswith("[本地] "):
++        display_name = api_name[5:]
++        for key, config in custom_local_models.items():
++            if config.get('display_name') == display_name:
++                return key
++
++    api_map = {
++        "Gemini API": "gemini",
++        "OpenAI API": "openai",
++        "Claude API": "claude",
++        "DeepSeek API": "deepseek",
++        "本地 LM Studio": "lm_studio",
++        "自定义API": "custom",
++    }
++    return api_map.get(api_name, "gemini")
++
++
++def is_api_ready(
++    api_type: str,
++    custom_local_models: Dict[str, Dict],
++    api_configs: Dict[str, Dict],
++    openai_support: bool,
++) -> bool:
++    """判断指定 API / 本地模型是否具备调用条件。"""
++    if api_type in custom_local_models:
++        config = custom_local_models.get(api_type, {})
++        return bool(config.get('base_url') and config.get('model_id'))
++
++    config = api_configs.get(api_type, {})
++    if not config:
++        return False
++
++    if api_type == 'custom':
++        return bool(config.get('base_url') and config.get('model'))
++    if api_type == 'lm_studio':
++        return openai_support and bool(config.get('base_url') and config.get('model'))
++
++    return bool(config.get('api_key') and config.get('model'))
++
++
++def get_preferred_text_api(
++    candidate_api_types: Iterable[str],
++    custom_local_models: Dict[str, Dict],
++    api_configs: Dict[str, Dict],
++    openai_support: bool,
++) -> str:
++    """从候选列表中选择第一个可用的文本生成 API。"""
++    for api_type in candidate_api_types:
++        if api_type and is_api_ready(api_type, custom_local_models, api_configs, openai_support):
++            return api_type
++
++    raise ValueError("未找到可用的文本生成 API，请先配置解析 API 或翻译 API")
++
++
++def select_text_generation_handler(
++    api_type: str,
++    custom_local_models: Dict[str, Dict],
++    builtin_handlers: Dict[str, Callable[[str], str]],
++    custom_local_handler_factory: Callable[[str], Callable[[str], str]],
++) -> Callable[[str], str]:
++    """根据 API 类型返回对应的文本生成处理器。"""
++    if api_type in custom_local_models:
++        return custom_local_handler_factory(api_type)
++
++    handler = builtin_handlers.get(api_type)
++    if handler is None:
++        raise ValueError(f"不支持的文本生成 API 类型: {api_type}")
++
++    return handler
+diff --git a/tests/test_api_selection_helpers.py b/tests/test_api_selection_helpers.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_api_selection_helpers.py
+@@ -0,0 +1,58 @@
++from api_selection_helpers import (
++    get_preferred_text_api,
++    is_api_ready,
++    map_api_name_to_key,
++    select_text_generation_handler,
++)
++
++
++def test_map_api_name_to_key_builtin_and_custom():
++    custom_models = {
++        "local_qwen": {"display_name": "Qwen Local"}
++    }
++
++    assert map_api_name_to_key("Gemini API", custom_models) == "gemini"
++    assert map_api_name_to_key("[本地] Qwen Local", custom_models) == "local_qwen"
++
++
++def test_is_api_ready_for_builtin_and_custom():
++    api_configs = {
++        "gemini": {"api_key": "k", "model": "gemini-2.5-flash"},
++        "lm_studio": {"base_url": "http://127.0.0.1:1234/v1", "model": "qwen"},
++    }
++    custom_models = {
++        "local_qwen": {"base_url": "http://127.0.0.1:1234/v1", "model_id": "qwen2.5"}
++    }
++
++    assert is_api_ready("gemini", custom_models, api_configs, openai_support=True) is True
++    assert is_api_ready("lm_studio", custom_models, api_configs, openai_support=True) is True
++    assert is_api_ready("local_qwen", custom_models, api_configs, openai_support=True) is True
++    assert is_api_ready("openai", custom_models, api_configs, openai_support=True) is False
++
++
++def test_get_preferred_text_api_returns_first_ready():
++    api_configs = {
++        "gemini": {"api_key": "k", "model": "gemini-2.5-flash"},
++    }
++
++    selected = get_preferred_text_api(
++        candidate_api_types=["openai", "gemini", "lm_studio"],
++        custom_local_models={},
++        api_configs=api_configs,
++        openai_support=True,
++    )
++
++    assert selected == "gemini"
++
++
++def test_select_text_generation_handler_returns_callable():
++    builtin_handlers = {
++        "gemini": lambda prompt: f"gemini:{prompt}",
++    }
++
++    handler = select_text_generation_handler(
++        api_type="gemini",
++        custom_local_models={},
++        builtin_handlers=builtin_handlers,
++        custom_local_handler_factory=lambda key: lambda prompt: f"{key}:{prompt}",
++    )
++
++    assert handler("hello") == "gemini:hello"
+-- 
+2.39.0
+
+From 9df6cb737f4e2dcb585aa54135312e796528c5fc Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Mon, 30 Mar 2026 13:15:00 +0000
+Subject: [PATCH] refactor: extract analysis API implementations from GUI
+
+- move analysis-oriented API request implementations into analysis_api_helpers.py
+- keep GUI methods as thin wrappers to reduce migration risk
+- add a focused test around the custom API request payload
+
+This patch is intended to be applied after 0001..0004.
+
+---
+diff --git a/book_translator_gui.pyw b/book_translator_gui.pyw
+--- a/book_translator_gui.pyw
++++ b/book_translator_gui.pyw
+@@ -89,6 +89,14 @@ from api_selection_helpers import (
+     get_preferred_text_api,
+     select_text_generation_handler,
+ )
++from analysis_api_helpers import (
++    analyze_with_gemini,
++    analyze_with_openai,
++    analyze_with_custom_api,
++    analyze_with_lm_studio,
++    analyze_with_claude,
++    analyze_with_deepseek,
++)
+
+ DEFAULT_TARGET_LANGUAGE = "中文"
+ DEFAULT_LM_STUDIO_CONFIG = {
+@@ -1984,29 +1992,10 @@ class BookTranslatorGUI:
+     def _analyze_with_gemini(self, prompt):
+         """使用Gemini API进行解析"""
+-        if not GEMINI_SUPPORT:
+-            raise ImportError("缺少 google-generativeai 库")
+-
+-        api_key = self.api_configs['gemini'].get('api_key', '')
+-        model_name = self.api_configs['gemini'].get('model', 'gemini-2.5-flash')
+-
+-        if not api_key:
+-            raise ValueError("未配置 Gemini API Key")
+-
+-        genai.configure(api_key=api_key)
+-        model = genai.GenerativeModel(model_name)
+-        response = model.generate_content(prompt)
+-
+-        return response.text
++        return analyze_with_gemini(prompt, self.api_configs.get('gemini', {}), GEMINI_SUPPORT, genai)
+
+     def _analyze_with_openai(self, prompt):
+         """使用OpenAI API进行解析"""
+-        if not OPENAI_SUPPORT:
+-            raise ImportError("缺少 openai 库")
+-
+-        api_key = self.api_configs['openai'].get('api_key', '')
+-        model_name = self.api_configs['openai'].get('model', 'gpt-3.5-turbo')
+-        base_url = self.api_configs['openai'].get('base_url', '')
+-
+-        if not api_key:
+-            raise ValueError("未配置 OpenAI API Key")
+-
+-        client_kwargs = {'api_key': api_key}
+-        if base_url:
+-            client_kwargs['base_url'] = base_url
+-
+-        client = openai.OpenAI(**client_kwargs)
+-        response = client.chat.completions.create(
+-            model=model_name,
+-            messages=[
+-                {"role": "system", "content": "你是一个专业的文本分析助手，擅长对翻译内容进行深度解析和讲解。"},
+-                {"role": "user", "content": prompt}
+-            ],
+-            temperature=0.3
+-        )
+-
+-        return response.choices[0].message.content
++        return analyze_with_openai(prompt, self.api_configs.get('openai', {}), OPENAI_SUPPORT, openai)
+
+     def _analyze_with_claude(self, prompt):
+         """使用 Claude API 进行解析"""
+-        if not CLAUDE_SUPPORT:
+-            raise ImportError("缺少 anthropic 库")
+-
+-        api_key = self.api_configs['claude'].get('api_key', '')
+-        model_name = self.api_configs['claude'].get('model', 'claude-3-haiku-20240307')
+-
+-        if not api_key:
+-            raise ValueError("未配置 Claude API Key")
+-
+-        client = anthropic.Anthropic(api_key=api_key)
+-        message = client.messages.create(
+-            model=model_name,
+-            max_tokens=2048,
+-            system="你是一个专业的文本分析助手，擅长对翻译内容进行深度解析和讲解。",
+-            messages=[
+-                {"role": "user", "content": prompt}
+-            ]
+-        )
+-
+-        return message.content[0].text
++        return analyze_with_claude(prompt, self.api_configs.get('claude', {}), CLAUDE_SUPPORT, anthropic)
+
+     def _analyze_with_deepseek(self, prompt):
+         """使用 DeepSeek API 进行解析"""
+-        if not OPENAI_SUPPORT:
+-            raise ImportError("缺少 openai 库")
+-
+-        api_key = self.api_configs['deepseek'].get('api_key', '')
+-        model_name = self.api_configs['deepseek'].get('model', 'deepseek-chat')
+-        base_url = self.api_configs['deepseek'].get('base_url', 'https://api.deepseek.com/v1')
+-
+-        if not api_key:
+-            raise ValueError("未配置 DeepSeek API Key")
+-
+-        client = openai.OpenAI(api_key=api_key, base_url=base_url)
+-        response = client.chat.completions.create(
+-            model=model_name,
+-            messages=[
+-                {"role": "system", "content": "你是一个专业的文本分析助手，擅长对翻译内容进行深度解析和讲解。"},
+-                {"role": "user", "content": prompt}
+-            ],
+-            temperature=0.3
+-        )
+-
+-        return response.choices[0].message.content
++        return analyze_with_deepseek(prompt, self.api_configs.get('deepseek', {}), OPENAI_SUPPORT, openai)
+
+     def _analyze_with_custom_api(self, prompt):
+         """使用自定义API进行解析"""
+-        if not REQUESTS_SUPPORT:
+-            raise ImportError("缺少 requests 库")
+-
+-        api_key = self.api_configs['custom'].get('api_key', '')
+-        model_name = self.api_configs['custom'].get('model', '')
+-        base_url = self.api_configs['custom'].get('base_url', '')
+-
+-        if not base_url:
+-            raise ValueError("未配置自定义API地址")
+-
+-        headers = {"Content-Type": "application/json"}
+-        if api_key:
+-            headers["Authorization"] = f"Bearer {api_key}"
+-
+-        data = {
+-            "model": model_name,
+-            "messages": [
+-                {"role": "system", "content": "你是一个专业的文本分析助手，擅长对翻译内容进行深度解析和讲解。"},
+-                {"role": "user", "content": prompt}
+-            ],
+-            "temperature": 0.3
+-        }
+-
+-        response = requests.post(
+-            f"{base_url.rstrip('/')}/chat/completions",
+-            headers=headers,
+-            json=data,
+-            timeout=120
+-        )
+-        response.raise_for_status()
+-
+-        result = response.json()
+-        return result['choices'][0]['message']['content']
++        return analyze_with_custom_api(prompt, self.api_configs.get('custom', {}), REQUESTS_SUPPORT, requests)
+
+     def _analyze_with_lm_studio(self, prompt):
+         """使用LM Studio本地模型进行解析"""
+-        if not OPENAI_SUPPORT:
+-            raise ImportError("缺少 openai 库")
+-
+-        config = self.api_configs.get('lm_studio', DEFAULT_LM_STUDIO_CONFIG)
+-
+-        client = openai.OpenAI(
+-            api_key=config.get('api_key', 'lm-studio'),
+-            base_url=config.get('base_url', 'http://127.0.0.1:1234/v1')
+-        )
+-
+-        response = client.chat.completions.create(
+-            model=config.get('model', 'qwen2.5-7b-instruct-1m'),
+-            messages=[
+-                {"role": "system", "content": "你是一个专业的文本分析助手，擅长对翻译内容进行深度解析和讲解。"},
+-                {"role": "user", "content": prompt}
+-            ],
+-            temperature=0.3
+-        )
+-
+-        return response.choices[0].message.content
++        return analyze_with_lm_studio(
++            prompt,
++            self.api_configs.get('lm_studio', DEFAULT_LM_STUDIO_CONFIG),
++            OPENAI_SUPPORT,
++            openai
++        )
+diff --git a/analysis_api_helpers.py b/analysis_api_helpers.py
+new file mode 100644
+--- /dev/null
++++ b/analysis_api_helpers.py
+@@ -0,0 +1,165 @@
++#! python
++# -*- coding: utf-8 -*-
++"""解析类文本生成 API 调用辅助工具。
++
++这里抽离的是“请求实现层”，目标是减轻 GUI 主文件体积，
++但不改变外部调用语义。
++"""
++
++from __future__ import annotations
++
++
++SYSTEM_PROMPT = "你是一个专业的文本分析助手，擅长对翻译内容进行深度解析和讲解。"
++
++
++def analyze_with_gemini(prompt: str, config: dict, gemini_support: bool, genai_module):
++    if not gemini_support:
++        raise ImportError("缺少 google-generativeai 库")
++
++    api_key = config.get('api_key', '')
++    model_name = config.get('model', 'gemini-2.5-flash')
++
++    if not api_key:
++        raise ValueError("未配置 Gemini API Key")
++
++    genai_module.configure(api_key=api_key)
++    model = genai_module.GenerativeModel(model_name)
++    response = model.generate_content(prompt)
++    return response.text
++
++
++def analyze_with_openai(prompt: str, config: dict, openai_support: bool, openai_module):
++    if not openai_support:
++        raise ImportError("缺少 openai 库")
++
++    api_key = config.get('api_key', '')
++    model_name = config.get('model', 'gpt-3.5-turbo')
++    base_url = config.get('base_url', '')
++
++    if not api_key:
++        raise ValueError("未配置 OpenAI API Key")
++
++    client_kwargs = {'api_key': api_key}
++    if base_url:
++        client_kwargs['base_url'] = base_url
++
++    client = openai_module.OpenAI(**client_kwargs)
++    response = client.chat.completions.create(
++        model=model_name,
++        messages=[
++            {"role": "system", "content": SYSTEM_PROMPT},
++            {"role": "user", "content": prompt}
++        ],
++        temperature=0.3
++    )
++    return response.choices[0].message.content
++
++
++def analyze_with_claude(prompt: str, config: dict, claude_support: bool, anthropic_module):
++    if not claude_support:
++        raise ImportError("缺少 anthropic 库")
++
++    api_key = config.get('api_key', '')
++    model_name = config.get('model', 'claude-3-haiku-20240307')
++
++    if not api_key:
++        raise ValueError("未配置 Claude API Key")
++
++    client = anthropic_module.Anthropic(api_key=api_key)
++    message = client.messages.create(
++        model=model_name,
++        max_tokens=2048,
++        system=SYSTEM_PROMPT,
++        messages=[{"role": "user", "content": prompt}],
++    )
++    return message.content[0].text
++
++
++def analyze_with_deepseek(prompt: str, config: dict, openai_support: bool, openai_module):
++    if not openai_support:
++        raise ImportError("缺少 openai 库")
++
++    api_key = config.get('api_key', '')
++    model_name = config.get('model', 'deepseek-chat')
++    base_url = config.get('base_url', 'https://api.deepseek.com/v1')
++
++    if not api_key:
++        raise ValueError("未配置 DeepSeek API Key")
++
++    client = openai_module.OpenAI(api_key=api_key, base_url=base_url)
++    response = client.chat.completions.create(
++        model=model_name,
++        messages=[
++            {"role": "system", "content": SYSTEM_PROMPT},
++            {"role": "user", "content": prompt}
++        ],
++        temperature=0.3
++    )
++    return response.choices[0].message.content
++
++
++def analyze_with_custom_api(prompt: str, config: dict, requests_support: bool, requests_module):
++    if not requests_support:
++        raise ImportError("缺少 requests 库")
++
++    api_key = config.get('api_key', '')
++    model_name = config.get('model', '')
++    base_url = config.get('base_url', '')
++
++    if not base_url:
++        raise ValueError("未配置自定义API地址")
++
++    headers = {"Content-Type": "application/json"}
++    if api_key:
++        headers["Authorization"] = f"Bearer {api_key}"
++
++    data = {
++        "model": model_name,
++        "messages": [
++            {"role": "system", "content": SYSTEM_PROMPT},
++            {"role": "user", "content": prompt}
++        ],
++        "temperature": 0.3
++    }
++
++    response = requests_module.post(
++        f"{base_url.rstrip('/')}/chat/completions",
++        headers=headers,
++        json=data,
++        timeout=120
++    )
++    response.raise_for_status()
++    result = response.json()
++    return result['choices'][0]['message']['content']
++
++
++def analyze_with_lm_studio(prompt: str, config: dict, openai_support: bool, openai_module):
++    if not openai_support:
++        raise ImportError("缺少 openai 库")
++
++    client = openai_module.OpenAI(
++        api_key=config.get('api_key', 'lm-studio'),
++        base_url=config.get('base_url', 'http://127.0.0.1:1234/v1')
++    )
++
++    response = client.chat.completions.create(
++        model=config.get('model', 'qwen2.5-7b-instruct-1m'),
++        messages=[
++            {"role": "system", "content": SYSTEM_PROMPT},
++            {"role": "user", "content": prompt}
++        ],
++        temperature=0.3
++    )
++    return response.choices[0].message.content
+diff --git a/tests/test_analysis_api_helpers.py b/tests/test_analysis_api_helpers.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_analysis_api_helpers.py
+@@ -0,0 +1,52 @@
++from analysis_api_helpers import SYSTEM_PROMPT, analyze_with_custom_api
++
++
++class _FakeResponse:
++    def raise_for_status(self):
++        return None
++
++    def json(self):
++        return {
++            "choices": [
++                {
++                    "message": {
++                        "content": "ok"
++                    }
++                }
++            ]
++        }
++
++
++class _FakeRequests:
++    def __init__(self):
++        self.last_call = None
++
++    def post(self, url, headers=None, json=None, timeout=None):
++        self.last_call = {
++            "url": url,
++            "headers": headers,
++            "json": json,
++            "timeout": timeout,
++        }
++        return _FakeResponse()
++
++
++def test_analyze_with_custom_api_builds_expected_request():
++    fake_requests = _FakeRequests()
++
++    result = analyze_with_custom_api(
++        prompt="hello",
++        config={
++            "api_key": "k",
++            "model": "m",
++            "base_url": "https://example.com/v1",
++        },
++        requests_support=True,
++        requests_module=fake_requests,
++    )
++
++    assert result == "ok"
++    assert fake_requests.last_call["url"] == "https://example.com/v1/chat/completions"
++    assert fake_requests.last_call["headers"]["Authorization"] == "Bearer k"
++    assert fake_requests.last_call["json"]["model"] == "m"
++    assert fake_requests.last_call["json"]["messages"][0]["content"] == SYSTEM_PROMPT
++    assert fake_requests.last_call["json"]["messages"][1]["content"] == "hello"
++    assert fake_requests.last_call["timeout"] == 120
+-- 
+2.39.0
+
+From 081b8b30344fb89d519880750c106575f013d4b9 Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Mon, 30 Mar 2026 13:30:00 +0000
+Subject: [PATCH] refactor: extract runtime state persistence helpers
+
+- move batch-queue JSON persistence into runtime_state_helpers.py
+- move progress-cache payload construction and JSON persistence into helpers
+- keep GUI methods as orchestration-only wrappers
+- add focused tests for runtime state helper functions
+
+This patch is intended to be applied after 0001..0005.
+
+---
+diff --git a/book_translator_gui.pyw b/book_translator_gui.pyw
+--- a/book_translator_gui.pyw
++++ b/book_translator_gui.pyw
+@@ -97,6 +97,13 @@ from analysis_api_helpers import (
+     analyze_with_claude,
+     analyze_with_deepseek,
+ )
++from runtime_state_helpers import (
++    load_json_state,
++    save_json_state,
++    remove_state_file,
++    build_progress_cache_payload,
++    resume_cache_matches_signature,
++)
+
+ DEFAULT_TARGET_LANGUAGE = "中文"
+ DEFAULT_LM_STUDIO_CONFIG = {
+@@ -525,12 +532,7 @@ class BookTranslatorGUI:
+     def load_batch_queue(self):
+         """加载批量任务列表"""
+         try:
+-            path = self.batch_queue_path
+-            if path.exists():
+-                with open(path, 'r', encoding='utf-8') as f:
+-                    self.batch_queue = json.load(f)
++            self.batch_queue = load_json_state(self.batch_queue_path, default=[])
+         except Exception as e:
+             print(f"Failed to load batch queue: {e}")
+             self.batch_queue = []
+@@ -539,10 +541,7 @@ class BookTranslatorGUI:
+     def save_batch_queue(self):
+         """保存批量任务列表"""
+         try:
+-            self.batch_queue_path.parent.mkdir(parents=True, exist_ok=True)
+-            with open(self.batch_queue_path, 'w', encoding='utf-8') as f:
+-                json.dump(self.batch_queue, f, ensure_ascii=False, indent=2)
++            save_json_state(self.batch_queue_path, self.batch_queue)
+         except Exception as e:
+             print(f"Failed to save batch queue: {e}")
+@@ -1134,22 +1133,10 @@ class BookTranslatorGUI:
+     def save_progress_cache(self):
+         """保存当前翻译进度到磁盘"""
+         try:
+-            if not self.current_text or not self.source_segments:
++            payload = build_progress_cache_payload(
++                file_path=self.file_path_var.get(),
++                signature=self.text_signature,
++                source_segments=self.source_segments,
++                translated_segments=self.translated_segments,
++                failed_segments=self.failed_segments,
++                lm_studio_fallback_active=self.lm_studio_fallback_active,
++                target_language=self.get_target_language(),
++            )
++            if not payload:
+                 return
+-
+-            data = {
+-                'file_path': self.file_path_var.get(),
+-                'signature': self.text_signature,
+-                'source_segments': self.source_segments,
+-                'translated_segments': self.translated_segments,
+-                'failed_segments': self.failed_segments,
+-                'lm_studio_fallback_active': self.lm_studio_fallback_active,
+-                'target_language': self.get_target_language(),
+-                'resume_from_index': len(self.translated_segments)
+-            }
+-            self.progress_cache_path.parent.mkdir(parents=True, exist_ok=True)
+-            with open(self.progress_cache_path, 'w', encoding='utf-8') as f:
+-                json.dump(data, f, ensure_ascii=False)
++            save_json_state(self.progress_cache_path, payload, indent=None)
+         except Exception as e:
+             print(f"保存进度缓存失败: {e}")
+
+@@ -1157,10 +1144,7 @@ class BookTranslatorGUI:
+     def clear_progress_cache(self):
+         """清除翻译进度缓存"""
+         try:
+-            if self.progress_cache_path.exists():
+-                self.progress_cache_path.unlink()
++            remove_state_file(self.progress_cache_path)
+         except Exception as e:
+             print(f"清除进度缓存失败: {e}")
+@@ -1172,8 +1156,7 @@ class BookTranslatorGUI:
+             return
+
+         try:
+-            with open(self.progress_cache_path, 'r', encoding='utf-8') as f:
+-                cache = json.load(f)
++            cache = load_json_state(self.progress_cache_path, default={})
+         except Exception as e:
+             print(f"读取进度缓存失败: {e}")
+             return
+@@ -1193,7 +1176,7 @@ class BookTranslatorGUI:
+             self.clear_progress_cache()
+             return
+
+-        if signature != current_sig:
++        if not resume_cache_matches_signature(cache, current_sig):
+             print("文件内容已变化，无法恢复进度，已清除缓存")
+             self.clear_progress_cache()
+             return
+diff --git a/runtime_state_helpers.py b/runtime_state_helpers.py
+new file mode 100644
+--- /dev/null
++++ b/runtime_state_helpers.py
+@@ -0,0 +1,75 @@
++#! python
++# -*- coding: utf-8 -*-
++"""运行时状态持久化辅助工具。
++
++目标：
++- 统一批量任务与进度缓存的 JSON 读写
++- 抽离 payload 组装逻辑，减轻 GUI 主文件复杂度
++"""
++
++from __future__ import annotations
++
++import json
++from pathlib import Path
++from typing import Any
++
++
++def load_json_state(path: str | Path, default: Any):
++    """读取 JSON 状态文件；文件不存在时返回默认值。"""
++    path = Path(path)
++    if not path.exists():
++        return default
++
++    with open(path, 'r', encoding='utf-8') as f:
++        return json.load(f)
++
++
++def save_json_state(path: str | Path, data: Any, indent: int | None = 2):
++    """保存 JSON 状态文件。"""
++    path = Path(path)
++    path.parent.mkdir(parents=True, exist_ok=True)
++    with open(path, 'w', encoding='utf-8') as f:
++        json.dump(data, f, ensure_ascii=False, indent=indent)
++
++
++def remove_state_file(path: str | Path):
++    """删除状态文件（如果存在）。"""
++    path = Path(path)
++    if path.exists():
++        path.unlink()
++
++
++def build_progress_cache_payload(
++    file_path: str,
++    signature: str,
++    source_segments: list,
++    translated_segments: list,
++    failed_segments: list,
++    lm_studio_fallback_active: bool,
++    target_language: str,
++):
++    """构建翻译进度缓存 payload。"""
++    if not file_path or not source_segments:
++        return None
++
++    return {
++        'file_path': file_path,
++        'signature': signature,
++        'source_segments': source_segments,
++        'translated_segments': translated_segments,
++        'failed_segments': failed_segments,
++        'lm_studio_fallback_active': lm_studio_fallback_active,
++        'target_language': target_language,
++        'resume_from_index': len(translated_segments),
++    }
++
++
++def resume_cache_matches_signature(cache: dict, current_signature: str) -> bool:
++    """判断缓存签名是否与当前文件内容匹配。"""
++    if not isinstance(cache, dict):
++        return False
++    return cache.get('signature') == current_signature
+diff --git a/tests/test_runtime_state_helpers.py b/tests/test_runtime_state_helpers.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_runtime_state_helpers.py
+@@ -0,0 +1,49 @@
++from pathlib import Path
++
++from runtime_state_helpers import (
++    build_progress_cache_payload,
++    load_json_state,
++    remove_state_file,
++    resume_cache_matches_signature,
++    save_json_state,
++)
++
++
++def test_save_and_load_json_state_roundtrip(tmp_path):
++    path = tmp_path / "state.json"
++    payload = {"a": 1, "b": ["x", "y"]}
++
++    save_json_state(path, payload)
++    loaded = load_json_state(path, default={})
++
++    assert loaded == payload
++
++
++def test_remove_state_file(tmp_path):
++    path = tmp_path / "state.json"
++    save_json_state(path, {"ok": True})
++    assert path.exists()
++
++    remove_state_file(path)
++
++    assert not path.exists()
++
++
++def test_build_progress_cache_payload_contains_resume_index():
++    payload = build_progress_cache_payload(
++        file_path="sample.txt",
++        signature="sig",
++        source_segments=["a", "b", "c"],
++        translated_segments=["ta", "tb"],
++        failed_segments=[],
++        lm_studio_fallback_active=False,
++        target_language="中文",
++    )
++
++    assert payload["resume_from_index"] == 2
++    assert payload["file_path"] == "sample.txt"
++
++
++def test_resume_cache_matches_signature():
++    assert resume_cache_matches_signature({"signature": "abc"}, "abc") is True
++    assert resume_cache_matches_signature({"signature": "abc"}, "xyz") is False
++    assert resume_cache_matches_signature([], "abc") is False
+-- 
+2.39.0
+
+From d6375fe2ec5d741e64983f0cb31e1672f60aaa98 Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Mon, 30 Mar 2026 13:45:00 +0000
+Subject: [PATCH] refactor: extract export helpers from GUI
+
+- move export filename building and UTF-8 text writing into export_helpers.py
+- move analysis text export into helper module
+- move bilingual DOCX and EPUB generation into helper module
+- keep GUI methods focused on dialogs and user notifications
+- add focused tests for filename building and analysis export output
+
+This patch is intended to be applied after 0001..0006.
+
+---
+diff --git a/book_translator_gui.pyw b/book_translator_gui.pyw
+--- a/book_translator_gui.pyw
++++ b/book_translator_gui.pyw
+@@ -104,6 +104,14 @@ from runtime_state_helpers import (
+     build_progress_cache_payload,
+     resume_cache_matches_signature,
+ )
++from export_helpers import (
++    build_translation_output_name,
++    sanitize_language_label,
++    write_utf8_text,
++    export_analysis_text_file,
++    export_bilingual_docx_file,
++    export_bilingual_epub_file,
++)
+
+ DEFAULT_TARGET_LANGUAGE = "中文"
+ DEFAULT_LM_STUDIO_CONFIG = {
+@@ -1766,16 +1774,11 @@ class BookTranslatorGUI:
+         try:
+-            target_language = self.get_target_language()
+-            safe_lang = re.sub(r'[\\/:*?"<>|]', "_", target_language).strip()
++            target_language = self.get_target_language()
+             original_path = Path(self.file_path_var.get())
+-            
+-            # 导出纯文本
+-            txt_name = f"{original_path.stem}_{safe_lang}译文.txt"
+-            txt_path = Path(self.batch_output_dir) / txt_name
+-            with open(txt_path, 'w', encoding='utf-8') as f:
+-                f.write(self.translated_text)
++            txt_name = build_translation_output_name(str(original_path), target_language, ".txt")
++            txt_path = Path(self.batch_output_dir) / txt_name
++            write_utf8_text(txt_path, self.translated_text)
+
+             print(f"批量导出成功: {txt_path}")
+-            
+         except Exception as e:
+             print(f"批量导出失败: {e}")
+             # 标记为失败但继续
+@@ -1793,18 +1796,13 @@ class BookTranslatorGUI:
+
+         # 建议默认文件名
+         original_file = self.file_path_var.get()
+-        target_language = self.get_target_language()
+-        safe_lang = re.sub(r'[\\/:*?"<>|]', "_", target_language).strip() or "译文"
++        target_language = self.get_target_language()
+
+         # 扩展名处理
+         ext = ".txt"
+         file_types = [("文本文件", "*.txt")]
+
+         # 如果是 DOCX 且处理器就绪，默认导出 DOCX
+         if self.docx_handler and original_file.lower().endswith('.docx'):
+             ext = ".docx"
+             file_types = [("Word 文档", "*.docx"), ("文本文件", "*.txt")]
+
+-        if original_file:
+-            base_name = Path(original_file).stem
+-            default_name = f"{base_name}_{safe_lang}译文{ext}"
+-        else:
+-            default_name = f"{safe_lang}译文{ext}"
++        default_name = build_translation_output_name(original_file, target_language, ext)
+
+         filename = filedialog.asksaveasfilename(
+             title="保存译文",
+@@ -1822,8 +1820,7 @@ class BookTranslatorGUI:
+                     self.docx_handler.save_translated_file(self.translated_segments, filename)
+                     messagebox.showinfo("成功", f"格式保留的 Word 文档已保存到:\n{filename}")
+                 else:
+-                    with open(filename, 'w', encoding='utf-8') as f:
+-                        f.write(self.translated_text)
++                    write_utf8_text(filename, self.translated_text)
+                     messagebox.showinfo("成功", f"译文已保存到:\n{filename}")
+
+                 # 完整导出后清除进度缓存
+@@ -2103,7 +2100,7 @@ class BookTranslatorGUI:
+         # 生成默认文件名
+         original_file = self.file_path_var.get()
+         if original_file:
+-            base_name = Path(original_file).stem
++            base_name = Path(original_file).stem
+             default_name = f"{base_name}_解析.txt"
+         else:
+             default_name = "解析结果.txt"
+@@ -2120,23 +2117,14 @@ class BookTranslatorGUI:
+             return
+
+         try:
+-            with open(file_path, 'w', encoding='utf-8') as f:
+-                f.write("=" * 60 + "\n")
+-                f.write("书籍翻译工具 - 段落解析结果\n")
+-                f.write("=" * 60 + "\n\n")
+-
+-                for i, (source, translated, analysis) in enumerate(zip(
+-                    self.source_segments,
+-                    self.translated_segments,
+-                    self.analysis_segments
+-                )):
+-                    f.write(f"{'='*40}\n")
+-                    f.write(f"段落 {i+1}\n")
+-                    f.write(f"{'='*40}\n\n")
+-                    f.write(f"【原文】\n{source}\n\n")
+-                    f.write(f"【译文】\n{translated}\n\n")
+-                    f.write(f"【解析】\n{analysis if analysis else '（未解析）'}\n\n")
++            export_analysis_text_file(
++                file_path=file_path,
++                source_segments=self.source_segments,
++                translated_segments=self.translated_segments,
++                analysis_segments=self.analysis_segments,
++            )
+
+             analyzed_count = sum(1 for s in self.analysis_segments if s)
++            total_count = len(self.analysis_segments)
+             total_count = len(self.analysis_segments)
+             messagebox.showinfo(
+                 "导出成功",
+@@ -2174,53 +2162,16 @@ class BookTranslatorGUI:
+             return
+
+         try:
+-            # 创建 EPUB 书籍
+-            book = epub.EpubBook()
+-            
+-            # 设置元数据
+-            title = Path(original_file).stem if original_file else "Translation"
+-            book.set_identifier(str(uuid.uuid4()))
+-            book.set_title(f"{title} (双语版)")
+-            book.set_language(self.get_target_language())
+-            book.add_author("Book Translator AI")
+-
+-            # 创建章节
+-            chapters = []
+-            # 将每 50 段作为一个章节，避免单页过长
+-            chunk_size = 50
+-            total_segments = len(self.source_segments)
+-            
+-            # 简单的 CSS 样式
+-            style = """
+-                body { font-family: sans-serif; }
+-                .segment { margin-bottom: 1.5em; border-bottom: 1px dashed #ccc; padding-bottom: 1em; }
+-                .original { color: #666; font-size: 0.9em; margin-bottom: 0.5em; }
+-                .translation { color: #000; font-size: 1.0em; font-weight: bold; }
+-            """
+-            css_item = epub.EpubItem(uid="style_nav", file_name="style/nav.css", media_type="text/css", content=style)
+-            book.add_item(css_item)
+-
+-            for i in range(0, total_segments, chunk_size):
+-                chunk_source = self.source_segments[i:i+chunk_size]
+-                chunk_trans = self.translated_segments[i:i+chunk_size]
+-                
+-                # 确保长度一致
+-                if len(chunk_trans) < len(chunk_source):
+-                    chunk_trans.extend([""] * (len(chunk_source) - len(chunk_trans)))
+-
+-                # 构建 HTML 内容
+-                html_content = ["<h1>第 {} 部分</h1>".format(i // chunk_size + 1)]
+-                for src, trans in zip(chunk_source, chunk_trans):
+-                    # 处理换行符
+-                    src_html = src.replace("\n", "<br/>")
+-                    trans_html = trans.replace("\n", "<br/>")
+-                    
+-                    html_content.append(f"""
+-                    <div class="segment">
+-                        <div class="original">{src_html}</div>
+-                        <div class="translation">{trans_html}</div>
+-                    </div>
+-                    """)
+-
+-                chapter = epub.EpubHtml(title=f"Part {i // chunk_size + 1}", file_name=f"part_{i // chunk_size + 1}.xhtml", lang='zh')
+-                chapter.content = "".join(html_content)
+-                chapter.add_item(css_item)
+-                
+-                book.add_item(chapter)
+-                chapters.append(chapter)
+-
+-            # 定义书籍骨架
+-            book.toc = tuple(chapters)
+-            book.add_item(epub.EpubNcx())
+-            book.add_item(epub.EpubNav())
+-            book.spine = ['nav'] + chapters
+-
+-            # 保存文件
+-            epub.write_epub(file_path, book, {})
++            export_bilingual_epub_file(
++                file_path=file_path,
++                original_file=original_file,
++                target_language=self.get_target_language(),
++                source_segments=self.source_segments,
++                translated_segments=self.translated_segments,
++                epub_module=epub,
++            )
+
+             messagebox.showinfo("成功", f"双语 EPUB 已导出:\n{file_path}")
+
+@@ -2731,28 +2682,12 @@ class BookTranslatorGUI:
+             if not filename: return
+
+-            # Use DocxHandler to create it (we instantiate a dummy one or use static method if we had one, 
+-            # but since we added it as instance method, we can create a temporary handler or just use the logic directly here)
+-            # Actually, reusing the logic I put in DocxHandler is best, but I need an instance.
+-            # I will just re-implement the simple logic here to avoid dependency on an existing file for DocxHandler init.
+-            
+-            from docx import Document
+-            from docx.shared import Pt
+-            
+-            doc = Document()
+-            doc.add_heading('双语对照翻译 / Bilingual Translation', 0)
+-            
+-            table = doc.add_table(rows=1, cols=2)
+-            table.style = 'Table Grid'
+-            hdr_cells = table.rows[0].cells
+-            hdr_cells[0].text = '原文 (Original)'
+-            hdr_cells[1].text = '译文 (Translation)'
+-            
+-            limit = max(len(self.source_segments), len(self.translated_segments))
+-            for i in range(limit):
+-                row_cells = table.add_row().cells
+-                
+-                # Source
+-                if i < len(self.source_segments):
+-                    row_cells[0].text = self.source_segments[i]
+-                
+-                # Target
+-                if i < len(self.translated_segments):
+-                    row_cells[1].text = self.translated_segments[i]
+-                    
+-            doc.save(filename)
++            export_bilingual_docx_file(
++                filename=filename,
++                source_segments=self.source_segments,
++                translated_segments=self.translated_segments,
++            )
+             messagebox.showinfo("成功", f"双语文档已导出: {filename}")
+
+         except Exception as e:
+diff --git a/export_helpers.py b/export_helpers.py
+new file mode 100644
+--- /dev/null
++++ b/export_helpers.py
+@@ -0,0 +1,125 @@
++#! python
++# -*- coding: utf-8 -*-
++"""导出相关辅助工具。
++
++这些函数尽量保持与 GUI 解耦，专注于文件名生成与导出内容写入。
++"""
++
++from __future__ import annotations
++
++import re
++import uuid
++from pathlib import Path
++
++
++def sanitize_language_label(target_language: str) -> str:
++    label = re.sub(r'[\\/:*?"<>|]', "_", target_language or "")
++    label = label.strip()
++    return label or "译文"
++
++
++def build_translation_output_name(original_file: str, target_language: str, ext: str, suffix: str = "译文") -> str:
++    safe_lang = sanitize_language_label(target_language)
++    if original_file:
++        base_name = Path(original_file).stem
++        return f"{base_name}_{safe_lang}{suffix}{ext}"
++    return f"{safe_lang}{suffix}{ext}"
++
++
++def write_utf8_text(path: str | Path, text: str):
++    path = Path(path)
++    with open(path, 'w', encoding='utf-8') as f:
++        f.write(text)
++
++
++def export_analysis_text_file(file_path: str | Path, source_segments: list, translated_segments: list, analysis_segments: list):
++    file_path = Path(file_path)
++    with open(file_path, 'w', encoding='utf-8') as f:
++        f.write("=" * 60 + "\n")
++        f.write("书籍翻译工具 - 段落解析结果\n")
++        f.write("=" * 60 + "\n\n")
++
++        for i, (source, translated, analysis) in enumerate(zip(source_segments, translated_segments, analysis_segments)):
++            f.write(f"{'='*40}\n")
++            f.write(f"段落 {i+1}\n")
++            f.write(f"{'='*40}\n\n")
++            f.write(f"【原文】\n{source}\n\n")
++            f.write(f"【译文】\n{translated}\n\n")
++            f.write(f"【解析】\n{analysis if analysis else '（未解析）'}\n\n")
++
++
++def export_bilingual_docx_file(filename: str | Path, source_segments: list, translated_segments: list):
++    from docx import Document
++
++    doc = Document()
++    doc.add_heading('双语对照翻译 / Bilingual Translation', 0)
++
++    table = doc.add_table(rows=1, cols=2)
++    table.style = 'Table Grid'
++    hdr_cells = table.rows[0].cells
++    hdr_cells[0].text = '原文 (Original)'
++    hdr_cells[1].text = '译文 (Translation)'
++
++    limit = max(len(source_segments), len(translated_segments))
++    for i in range(limit):
++        row_cells = table.add_row().cells
++        if i < len(source_segments):
++            row_cells[0].text = source_segments[i]
++        if i < len(translated_segments):
++            row_cells[1].text = translated_segments[i]
++
++    doc.save(str(filename))
++
++
++def export_bilingual_epub_file(
++    file_path: str | Path,
++    original_file: str,
++    target_language: str,
++    source_segments: list,
++    translated_segments: list,
++    epub_module,
++):
++    book = epub_module.EpubBook()
++
++    title = Path(original_file).stem if original_file else "Translation"
++    book.set_identifier(str(uuid.uuid4()))
++    book.set_title(f"{title} (双语版)")
++    book.set_language(target_language)
++    book.add_author("Book Translator AI")
++
++    chapters = []
++    chunk_size = 50
++    total_segments = len(source_segments)
++
++    style = """
++        body { font-family: sans-serif; }
++        .segment { margin-bottom: 1.5em; border-bottom: 1px dashed #ccc; padding-bottom: 1em; }
++        .original { color: #666; font-size: 0.9em; margin-bottom: 0.5em; }
++        .translation { color: #000; font-size: 1.0em; font-weight: bold; }
++    """
++    css_item = epub_module.EpubItem(uid="style_nav", file_name="style/nav.css", media_type="text/css", content=style)
++    book.add_item(css_item)
++
++    for i in range(0, total_segments, chunk_size):
++        chunk_source = source_segments[i:i+chunk_size]
++        chunk_trans = list(translated_segments[i:i+chunk_size])
++
++        if len(chunk_trans) < len(chunk_source):
++            chunk_trans.extend([""] * (len(chunk_source) - len(chunk_trans)))
++
++        html_content = [f"<h1>第 {i // chunk_size + 1} 部分</h1>"]
++        for src, trans in zip(chunk_source, chunk_trans):
++            src_html = src.replace("\n", "<br/>")
++            trans_html = trans.replace("\n", "<br/>")
++            html_content.append(f"""
++            <div class="segment">
++                <div class="original">{src_html}</div>
++                <div class="translation">{trans_html}</div>
++            </div>
++            """)
++
++        chapter = epub_module.EpubHtml(title=f"Part {i // chunk_size + 1}", file_name=f"part_{i // chunk_size + 1}.xhtml", lang='zh')
++        chapter.content = "".join(html_content)
++        chapter.add_item(css_item)
++        book.add_item(chapter)
++        chapters.append(chapter)
++
++    book.toc = tuple(chapters)
++    book.add_item(epub_module.EpubNcx())
++    book.add_item(epub_module.EpubNav())
++    book.spine = ['nav'] + chapters
++    epub_module.write_epub(str(file_path), book, {})
+diff --git a/tests/test_export_helpers.py b/tests/test_export_helpers.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_export_helpers.py
+@@ -0,0 +1,29 @@
++from export_helpers import (
++    build_translation_output_name,
++    sanitize_language_label,
++    write_utf8_text,
++    export_analysis_text_file,
++)
++
++
++def test_sanitize_language_label_replaces_invalid_chars():
++    assert sanitize_language_label('中/文:*?') == '中_文___'
++
++
++def test_build_translation_output_name_uses_original_stem():
++    name = build_translation_output_name('docs/sample_book.epub', '中文', '.txt')
++    assert name == 'sample_book_中文译文.txt'
++
++
++def test_write_utf8_text_roundtrip(tmp_path):
++    path = tmp_path / 'out.txt'
++    write_utf8_text(path, 'hello')
++    assert path.read_text(encoding='utf-8') == 'hello'
++
++
++def test_export_analysis_text_file_contains_section_headers(tmp_path):
++    path = tmp_path / 'analysis.txt'
++    export_analysis_text_file(path, ['原文'], ['译文'], ['解析'])
++    content = path.read_text(encoding='utf-8')
++    assert '书籍翻译工具 - 段落解析结果' in content
++    assert '【原文】' in content
++    assert '【解析】' in content
+-- 
+2.39.0
+
+From 9802a3d08aa716fa7e5010dd1082a9d0dbf53b58 Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Mon, 30 Mar 2026 14:00:00 +0000
+Subject: [PATCH] refactor: extract library UI helpers from GUI
+
+- move online-library result grouping and tree-row building into library_ui_helpers.py
+- move result detail formatting and title lookup into helper functions
+- lightly simplify community list rendering
+- add focused tests for grouping, row generation and detail formatting
+
+This patch is intended to be applied after 0001..0007.
+
+---
+diff --git a/book_translator_gui.pyw b/book_translator_gui.pyw
+--- a/book_translator_gui.pyw
++++ b/book_translator_gui.pyw
+@@ -112,6 +112,13 @@ from export_helpers import (
+     export_analysis_text_file,
+     export_bilingual_docx_file,
+     export_bilingual_epub_file,
+ )
++from library_ui_helpers import (
++    group_results_by_category,
++    build_tree_rows_for_results,
++    find_result_by_title,
++    format_search_result_detail,
++    build_category_rows,
++)
+
+ DEFAULT_TARGET_LANGUAGE = "中文"
+ DEFAULT_LM_STUDIO_CONFIG = {
+@@ -2404,19 +2411,17 @@ class BookTranslatorGUI:
+     def refresh_community_list(self):
+         """刷新社区书籍列表"""
+         self.comm_tree.delete(*self.comm_tree.get_children())
+         try:
+             books = self.community_manager.get_public_books()
+-            for b in books:
+-                self.comm_tree.insert("", "end", values=(
+-                    b.get('title', 'Unknown'),
+-                    b.get('author', 'Unknown'),
+-                    b.get('description', ''),
+-                    b.get('uploader', 'Anon'),
+-                    b.get('size', ''),
+-                    b.get('date', '')
+-                ), tags=(b['url'],)) # Store URL in tag
++            for row in build_category_rows(books):
++                self.comm_tree.insert("", "end", values=(
++                    row['title'],
++                    row['author'],
++                    row['description'],
++                    row['uploader'],
++                    row['size'],
++                    row['date'],
++                ), tags=(row['url'],))
+         except Exception as e:
+             messagebox.showerror("刷新失败", str(e))
+@@ -2636,23 +2641,16 @@ class BookTranslatorGUI:
+     def _refresh_search_tree_grouped(self):
+         """重新根据当前数据刷新树状列表"""
+         # 清空当前树
+         for item in self.search_tree.get_children():
+             self.search_tree.delete(item)
+-            
+-        # 重新分组
+-        categories = {}
+-        for res in self.current_search_results:
+-            cat = res.get('category', 'Uncategorized')
+-            if cat not in categories:
+-                categories[cat] = []
+-            categories[cat].append(res)
+-        
+-        # 重新插入
+-        for i, (cat, cat_books) in enumerate(categories.items()):
+-            cat_id = f"group_{i}"
+-            # 文件夹节点
+-            self.search_tree.insert("", tk.END, iid=cat_id, values=("📂 " + cat, "", "", "", "", res.get('source', ''), "分类"), open=True)
+-            
+-            for j, res in enumerate(cat_books):
+-                # 书籍节点
+-                self.search_tree.insert(cat_id, tk.END, iid=f"book_{i}_{j}", values=(
+-                    res.get('title', '未知'),
+-                    res.get('author', '未知'),
+-                    res.get('language', ''),
+-                    res.get('extension', ''),
+-                    res.get('size', ''),
+-                    res.get('source', res.get('source', '')),
+-                    cat
+-                ))
++
++        grouped = group_results_by_category(self.current_search_results)
++        for parent_row, children in build_tree_rows_for_results(grouped, row_prefix="group"):
++            self.search_tree.insert(
++                "", tk.END, iid=parent_row["iid"], values=parent_row["values"], open=True
++            )
++            for child_row in children:
++                self.search_tree.insert(
++                    parent_row["iid"], tk.END, iid=child_row["iid"], values=child_row["values"]
++                )
+@@ -2696,28 +2694,14 @@ class BookTranslatorGUI:
+                 if not results:
+                     self.search_status_var.set("AI 未找到相关书籍")
+                     messagebox.showinfo("提示", "AI 分析了您的需求，但未找到匹配的书籍。")
+                     return
+-                
+-                # 按分类分组
+-                categories = {}
+-                for res in results:
+-                    cat = res.get('category', 'Uncategorized')
+-                    if cat not in categories:
+-                        categories[cat] = []
+-                    categories[cat].append(res)
+-                
+-                # 清空并以树状展示
+-                for i, (cat, cat_books) in enumerate(categories.items()):
+-                    # 插入分类父节点
+-                    cat_id = f"ai_cat_{i}"
+-                    self.search_tree.insert("", tk.END, iid=cat_id, values=("📂 " + cat, "", "", "", "", source, "分类"), open=True)
+-                    
+-                    for j, res in enumerate(cat_books):
+-                        self.search_tree.insert(cat_id, tk.END, iid=f"ai_book_{i}_{j}", values=(
+-                            res.get('title', '未知'),
+-                            res.get('author', '未知'),
+-                            res.get('language', ''),
+-                            res.get('extension', ''),
+-                            res.get('size', ''),
+-                            res.get('source', source),
+-                            cat
+-                        ))
++
++                grouped = group_results_by_category(results)
++                for parent_row, children in build_tree_rows_for_results(grouped, row_prefix="ai"):
++                    self.search_tree.insert(
++                        "", tk.END, iid=parent_row["iid"], values=parent_row["values"], open=True
++                    )
++                    for child_row in children:
++                        self.search_tree.insert(
++                            parent_row["iid"], tk.END, iid=child_row["iid"], values=child_row["values"]
++                        )
+
+                 self.search_status_var.set(f"AI 寻书完成，找到 {len(results)} 本推荐书籍")
+
+@@ -2753,26 +2737,14 @@ class BookTranslatorGUI:
+                 if not results:
+                     self.search_status_var.set("未找到结果")
+                     messagebox.showinfo("提示", f"在 {source} 中未找到关键词 '{query}' 的结果")
+                     return
+-                    
+-                # 按分类分组
+-                categories = {}
+-                for res in results:
+-                    cat = res.get('category', 'Uncategorized')
+-                    if cat not in categories:
+-                        categories[cat] = []
+-                    categories[cat].append(res)
+-                
+-                for i, (cat, cat_books) in enumerate(categories.items()):
+-                    # 插入分类父节点
+-                    cat_id = f"search_cat_{i}"
+-                    self.search_tree.insert("", tk.END, iid=cat_id, values=("📂 " + cat, "", "", "", "", source, "分类"), open=True)
+-                    
+-                    for j, res in enumerate(cat_books):
+-                        self.search_tree.insert(cat_id, tk.END, iid=f"search_book_{i}_{j}", values=(
+-                            res.get('title', '未知'),
+-                            res.get('author', '未知'),
+-                            res.get('language', ''),
+-                            res.get('extension', ''),
+-                            res.get('size', ''),
+-                            res.get('source', source),
+-                            cat
+-                        ))
++
++                grouped = group_results_by_category(results)
++                for parent_row, children in build_tree_rows_for_results(grouped, row_prefix="search"):
++                    self.search_tree.insert(
++                        "", tk.END, iid=parent_row["iid"], values=parent_row["values"], open=True
++                    )
++                    for child_row in children:
++                        self.search_tree.insert(
++                            parent_row["iid"], tk.END, iid=child_row["iid"], values=child_row["values"]
++                        )
+
+                 self.search_status_var.set(f"搜索完成，找到 {len(results)} 个结果 (第 {page} 页)")
+
+@@ -2795,25 +2767,12 @@ class BookTranslatorGUI:
+         item_values = self.search_tree.item(item_id, "values")
+         title = item_values[0]
+
+-        self.selected_result = None
+-        for res in self.current_search_results:
+-            if res.get('title') == title:
+-                self.selected_result = res
+-                break
++        self.selected_result = find_result_by_title(self.current_search_results, title)
+
+         if self.selected_result:
+-            res = self.selected_result
+-            detail = (
+-                f"标题: {res.get('title')}\n"
+-                f"作者: {res.get('author')}\n"
+-                f"分类: {res.get('category', 'Uncategorized')}\n"
+-                f"格式: {res.get('extension')} | 大小: {res.get('size')} | 语言: {res.get('language')}\n"
+-                f"来源: {res.get('source')}\n"
+-                f"详情: {res.get('metadata', '')}"
+-            )
+-            self.search_detail_var.set(detail)
++            self.search_detail_var.set(format_search_result_detail(self.selected_result))
+             self.download_btn.config(state="normal")
+diff --git a/library_ui_helpers.py b/library_ui_helpers.py
+new file mode 100644
+--- /dev/null
++++ b/library_ui_helpers.py
+@@ -0,0 +1,95 @@
++#! python
++# -*- coding: utf-8 -*-
++"""在线书城 / 社区图书馆 UI 数据辅助工具。
++
++目标：
++- 抽离搜索结果分组与 TreeView 行数据构造
++- 抽离详情文本格式化
++- 不触碰真实网络请求与 GUI 事件绑定
++"""
++
++from __future__ import annotations
++
++
++def group_results_by_category(results, default_category="Uncategorized"):
++    grouped = {}
++    for res in results:
++        cat = res.get("category", default_category)
++        if cat not in grouped:
++            grouped[cat] = []
++        grouped[cat].append(res)
++    return grouped
++
++
++def build_tree_rows_for_results(grouped_results, row_prefix="search"):
++    rows = []
++    for i, (cat, cat_books) in enumerate(grouped_results.items()):
++        parent_row = {
++            "iid": f"{row_prefix}_cat_{i}",
++            "values": ("📂 " + cat, "", "", "", "", "", "分类"),
++        }
++        children = []
++        for j, res in enumerate(cat_books):
++            children.append({
++                "iid": f"{row_prefix}_book_{i}_{j}",
++                "values": (
++                    res.get("title", "未知"),
++                    res.get("author", "未知"),
++                    res.get("language", ""),
++                    res.get("extension", ""),
++                    res.get("size", ""),
++                    res.get("source", ""),
++                    cat,
++                ),
++            })
++        rows.append((parent_row, children))
++    return rows
++
++
++def find_result_by_title(results, title):
++    for res in results:
++        if res.get("title") == title:
++            return res
++    return None
++
++
++def format_search_result_detail(result):
++    return (
++        f"标题: {result.get('title')}\n"
++        f"作者: {result.get('author')}\n"
++        f"分类: {result.get('category', 'Uncategorized')}\n"
++        f"格式: {result.get('extension')} | 大小: {result.get('size')} | 语言: {result.get('language')}\n"
++        f"来源: {result.get('source')}\n"
++        f"详情: {result.get('metadata', '')}"
++    )
++
++
++def build_category_rows(books):
++    rows = []
++    for book in books:
++        rows.append({
++            "title": book.get("title", "Unknown"),
++            "author": book.get("author", "Unknown"),
++            "description": book.get("description", ""),
++            "uploader": book.get("uploader", "Anon"),
++            "size": book.get("size", ""),
++            "date": book.get("date", ""),
++            "url": book.get("url", ""),
++        })
++    return rows
+diff --git a/tests/test_library_ui_helpers.py b/tests/test_library_ui_helpers.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_library_ui_helpers.py
+@@ -0,0 +1,43 @@
++from library_ui_helpers import (
++    group_results_by_category,
++    build_tree_rows_for_results,
++    find_result_by_title,
++    format_search_result_detail,
++)
++
++
++def test_group_results_by_category_groups_items():
++    results = [
++        {"title": "A", "category": "Sci-Fi"},
++        {"title": "B", "category": "Sci-Fi"},
++        {"title": "C", "category": "History"},
++    ]
++    grouped = group_results_by_category(results)
++    assert len(grouped["Sci-Fi"]) == 2
++    assert len(grouped["History"]) == 1
++
++
++def test_build_tree_rows_for_results_returns_parent_and_children():
++    grouped = {
++        "Sci-Fi": [
++            {"title": "A", "author": "X", "source": "Anna"},
++        ]
++    }
++    rows = build_tree_rows_for_results(grouped, row_prefix="search")
++    parent, children = rows[0]
++    assert parent["iid"] == "search_cat_0"
++    assert children[0]["iid"] == "search_book_0_0"
++    assert children[0]["values"][0] == "A"
++
++
++def test_find_result_by_title_returns_match():
++    results = [{"title": "Book A"}, {"title": "Book B"}]
++    assert find_result_by_title(results, "Book B")["title"] == "Book B"
++    assert find_result_by_title(results, "Missing") is None
++
++
++def test_format_search_result_detail_contains_key_fields():
++    detail = format_search_result_detail({
++        "title": "Book A", "author": "Anon", "category": "Sci-Fi", "source": "Anna"
++    })
++    assert "标题: Book A" in detail
++    assert "作者: Anon" in detail
++    assert "分类: Sci-Fi" in detail
+-- 
+2.39.0
+
+From a65b5a36d0d3982cff8147240c7afd30e62d82f1 Mon Sep 17 00:00:00 2001
+From: OpenAI <noreply@openai.com>
+Date: Mon, 30 Mar 2026 14:20:00 +0000
+Subject: [PATCH] refactor: extract UI view helpers from GUI
+
+- move preview/full-text display string building into ui_view_helpers.py
+- move file-info label text and preview-button text helpers into a standalone module
+- move dark/light theme application helpers out of the GUI file
+- add focused tests for preview and label helper functions
+
+This patch is intended to be applied after 0001..0008.
+
+---
+diff --git a/book_translator_gui.pyw b/book_translator_gui.pyw
+--- a/book_translator_gui.pyw
++++ b/book_translator_gui.pyw
+@@ -119,6 +119,13 @@ from library_ui_helpers import (
+     format_search_result_detail,
+     build_category_rows,
+ )
++from ui_view_helpers import (
++    build_original_text_display,
++    build_file_info_label,
++    get_preview_toggle_button_text,
++    apply_dark_theme,
++    apply_light_theme,
++)
+
+ DEFAULT_TARGET_LANGUAGE = "中文"
+ DEFAULT_LM_STUDIO_CONFIG = {
+@@ -1864,22 +1871,10 @@ class BookTranslatorGUI:
+     def update_text_display(self):
+         """更新文本显示（预览或完整）"""
+         if not self.current_text:
+             return
+
+         self.original_text.delete('1.0', tk.END)
+-
+-        char_count = len(self.current_text)
+-        is_large_file = char_count > self.preview_limit
+-
+-        if is_large_file and not self.show_full_text:
+-            # 显示预览
+-            preview_text = self.current_text[:self.preview_limit]
+-            preview_text += f"\n\n{'='*60}\n"
+-            preview_text += f"⚠️ 预览模式：仅显示前 {self.preview_limit:,} / {char_count:,} 字符\n"
+-            preview_text += f"点击上方'显示完整原文'按钮查看全文\n"
+-            preview_text += f"{'='*60}"
+-            self.original_text.insert('1.0', preview_text)
+-        else:
+-            # 显示完整文本
+-            self.original_text.insert('1.0', self.current_text)
++        display_text = build_original_text_display(self.current_text, self.preview_limit, self.show_full_text)
++        self.original_text.insert('1.0', display_text)
+
+     def toggle_full_text_display(self):
+         """切换显示完整文本或预览"""
+@@ -1888,16 +1883,11 @@ class BookTranslatorGUI:
+
+         self.show_full_text = not self.show_full_text
+         char_count = len(self.current_text)
+
+         if self.show_full_text:
+-            # 切换到完整显示
+-            self.toggle_preview_btn.config(text="仅显示预览")
+-            self.file_info_var.set(f"✓ 显示完整文件 ({char_count:,} 字符)")
++            self.toggle_preview_btn.config(text=get_preview_toggle_button_text(self.show_full_text))
++            self.file_info_var.set(build_file_info_label(char_count, self.preview_limit, self.show_full_text))
+             self.progress_text_var.set("正在加载完整文本...")
+             self.root.update()
+
+             # 使用after延迟更新，避免界面冻结
+             self.root.after(100, self._update_full_text)
+         else:
+-            # 切换到预览
+-            self.toggle_preview_btn.config(text="显示完整原文")
+-            self.file_info_var.set(
+-                f"⚠️ 大文件 ({char_count:,} 字符) - 仅显示前 {self.preview_limit:,} 字符"
+-            )
++            self.toggle_preview_btn.config(text=get_preview_toggle_button_text(self.show_full_text))
++            self.file_info_var.set(build_file_info_label(char_count, self.preview_limit, self.show_full_text))
+             self.update_text_display()
+             self.progress_text_var.set(f"已加载文件 | 字符数: {char_count:,}")
+@@ -1907,6 +1897,7 @@ class BookTranslatorGUI:
+         """更新完整文本（在延迟后执行）"""
+         self.update_text_display()
+         char_count = len(self.current_text)
++        self.file_info_var.set(build_file_info_label(char_count, self.preview_limit, self.show_full_text))
+         word_count = len(self.current_text.split())
+         self.progress_text_var.set(
+             f"已加载完整文件 | 字符数: {char_count:,} | 词数: {word_count:,}"
+@@ -2840,55 +2831,30 @@ class BookTranslatorGUI:
+     def toggle_theme(self):
+         """切换明亮/暗黑主题"""
+         style = ttk.Style()
++        text_widgets = [
++            self.original_text, self.translated_text_widget, self.failed_source_text,
++            self.manual_translation_text, self.analysis_text, self.comp_source_text, self.comp_target_text
++        ]
++        listboxes = [self.failed_listbox, self.analysis_listbox]
+
+         if self.current_theme == "light":
+             self.current_theme = "dark"
+-            style.theme_use('clam')
+-            
+-            bg_color = "#2b2b2b"
+-            fg_color = "#ffffff"
+-            field_bg = "#3c3f41"
+-            select_bg = "#005fb8"
+-            
+-            style.configure(".", background=bg_color, foreground=fg_color)
+-            style.configure("TLabel", background=bg_color, foreground=fg_color)
+-            style.configure("TButton", background=field_bg, foreground=fg_color, borderwidth=1)
+-            style.map("TButton", background=[("active", "#4c5052")])
+-            style.configure("TEntry", fieldbackground=field_bg, foreground=fg_color)
+-            style.configure("TCombobox", fieldbackground=field_bg, foreground=fg_color, background=bg_color)
+-            style.configure("Treeview", background=field_bg, foreground=fg_color, fieldbackground=field_bg)
+-            style.map("Treeview", background=[("selected", select_bg)])
+-            style.configure("TLabelframe", background=bg_color, foreground=fg_color)
+-            style.configure("TLabelframe.Label", background=bg_color, foreground=fg_color)
+-            
+-            # Text widgets
+-            for widget in [self.original_text, self.translated_text_widget, self.failed_source_text, 
+-                          self.manual_translation_text, self.analysis_text, self.comp_source_text, self.comp_target_text]:
+-                try:
+-                    widget.config(bg=field_bg, fg=fg_color, insertbackground=fg_color)
+-                except: pass
+-                
+-            # Listboxes
+-            for lb in [self.failed_listbox, self.analysis_listbox]:
+-                try:
+-                    lb.config(bg=field_bg, fg=fg_color)
+-                except: pass
++            apply_dark_theme(
++                style=style,
++                text_widgets=text_widgets,
++                listboxes=listboxes,
++            )
+
+         else:
+             self.current_theme = "light"
+-            style.theme_use('default')
+-            
+-            # Reset Text widgets
+-            for widget in [self.original_text, self.translated_text_widget, self.failed_source_text, 
+-                          self.manual_translation_text, self.analysis_text, self.comp_source_text, self.comp_target_text]:
+-                try:
+-                    widget.config(bg="white", fg="black", insertbackground="black")
+-                except: pass
+-                
+-            # Reset Listboxes
+-            for lb in [self.failed_listbox, self.analysis_listbox]:
+-                try:
+-                    lb.config(bg="white", fg="black")
+-                except: pass
++            apply_light_theme(
++                style=style,
++                text_widgets=text_widgets,
++                listboxes=listboxes,
++            )
+diff --git a/ui_view_helpers.py b/ui_view_helpers.py
+new file mode 100644
+--- /dev/null
++++ b/ui_view_helpers.py
+@@ -0,0 +1,86 @@
++#! python
++# -*- coding: utf-8 -*-
++"""UI 视图辅助工具。
++
++目标：
++- 抽离原文预览/完整显示的文案拼装
++- 抽离主题切换中的重复样式代码
++"""
++
++from __future__ import annotations
++
++
++def build_original_text_display(current_text: str, preview_limit: int, show_full_text: bool) -> str:
++    """构建原文区域显示内容。"""
++    char_count = len(current_text)
++    is_large_file = char_count > preview_limit
++
++    if is_large_file and not show_full_text:
++        preview_text = current_text[:preview_limit]
++        preview_text += f"\n\n{'='*60}\n"
++        preview_text += f"⚠️ 预览模式：仅显示前 {preview_limit:,} / {char_count:,} 字符\n"
++        preview_text += "点击上方'显示完整原文'按钮查看全文\n"
++        preview_text += f"{'='*60}"
++        return preview_text
++
++    return current_text
++
++
++def build_file_info_label(char_count: int, preview_limit: int, show_full_text: bool) -> str:
++    """构建文件信息标签。"""
++    if char_count > preview_limit:
++        if show_full_text:
++            return f"✓ 显示完整文件 ({char_count:,} 字符)"
++        return f"⚠️ 大文件 ({char_count:,} 字符) - 仅显示前 {preview_limit:,} 字符"
++    return f"✓ 已加载完整文件 ({char_count:,} 字符)"
++
++
++def get_preview_toggle_button_text(show_full_text: bool) -> str:
++    return "仅显示预览" if show_full_text else "显示完整原文"
++
++
++def apply_dark_theme(style, text_widgets, listboxes):
++    style.theme_use('clam')
++
++    bg_color = "#2b2b2b"
++    fg_color = "#ffffff"
++    field_bg = "#3c3f41"
++    select_bg = "#005fb8"
++
++    style.configure(".", background=bg_color, foreground=fg_color)
++    style.configure("TLabel", background=bg_color, foreground=fg_color)
++    style.configure("TButton", background=field_bg, foreground=fg_color, borderwidth=1)
++    style.map("TButton", background=[("active", "#4c5052")])
++    style.configure("TEntry", fieldbackground=field_bg, foreground=fg_color)
++    style.configure("TCombobox", fieldbackground=field_bg, foreground=fg_color, background=bg_color)
++    style.configure("Treeview", background=field_bg, foreground=fg_color, fieldbackground=field_bg)
++    style.map("Treeview", background=[("selected", select_bg)])
++    style.configure("TLabelframe", background=bg_color, foreground=fg_color)
++    style.configure("TLabelframe.Label", background=bg_color, foreground=fg_color)
++
++    for widget in text_widgets:
++        try:
++            widget.config(bg=field_bg, fg=fg_color, insertbackground=fg_color)
++        except Exception:
++            pass
++
++    for lb in listboxes:
++        try:
++            lb.config(bg=field_bg, fg=fg_color)
++        except Exception:
++            pass
++
++
++def apply_light_theme(style, text_widgets, listboxes):
++    style.theme_use('default')
++
++    for widget in text_widgets:
++        try:
++            widget.config(bg="white", fg="black", insertbackground="black")
++        except Exception:
++            pass
++
++    for lb in listboxes:
++        try:
++            lb.config(bg="white", fg="black")
++        except Exception:
++            pass
+diff --git a/tests/test_ui_view_helpers.py b/tests/test_ui_view_helpers.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_ui_view_helpers.py
+@@ -0,0 +1,34 @@
++from ui_view_helpers import (
++    build_original_text_display,
++    build_file_info_label,
++    get_preview_toggle_button_text,
++)
++
++
++def test_build_original_text_display_returns_preview_for_large_files():
++    text = "a" * 120
++    result = build_original_text_display(text, preview_limit=50, show_full_text=False)
++    assert "预览模式" in result
++    assert len(result) > 50
++
++
++def test_build_original_text_display_returns_full_text_when_enabled():
++    text = "abcdef"
++    result = build_original_text_display(text, preview_limit=3, show_full_text=True)
++    assert result == "abcdef"
++
++
++def test_build_file_info_label_changes_with_mode():
++    assert "仅显示前" in build_file_info_label(100, 50, False)
++    assert "显示完整文件" in build_file_info_label(100, 50, True)
++    assert "已加载完整文件" in build_file_info_label(20, 50, False)
++
++
++def test_get_preview_toggle_button_text_matches_state():
++    assert get_preview_toggle_button_text(True) == "仅显示预览"
++    assert get_preview_toggle_button_text(False) == "显示完整原文"
+-- 
+2.39.0
