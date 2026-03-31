@@ -3855,9 +3855,7 @@ class BookTranslatorGUI:
                         api_type = self.get_translation_api_type()
 
                     strict_json_prompt = (
-                        "你是一个专业的图书管理员。请严格返回 JSON 对象，不要输出 Markdown 代码块，也不要附加解释。
-
-"
+                        "你是一个专业的图书管理员。请严格返回 JSON 对象，不要输出 Markdown 代码块，也不要附加解释。\n\n"
                         + prompt
                     )
                     response = self.generate_text_with_selected_api(strict_json_prompt, preferred_api_type=api_type)
