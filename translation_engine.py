@@ -135,7 +135,8 @@ class TranslationEngine:
         """设置降级时使用的提供商"""
         self.fallback_provider = provider_name
 
-    def _is_builtin_config_ready(self, provider: str) -> bool:
+    def _is_cloud_provider_ready(self, provider: str) -> bool:
+        """云端提供商是否配置完整。"""
         config = self.api_configs.get(provider)
         if not config:
             return False
@@ -148,11 +149,21 @@ class TranslationEngine:
             return CLAUDE_SUPPORT and bool(config.api_key and config.model)
         if provider == 'deepseek':
             return OPENAI_SUPPORT and bool(config.api_key and config.model)
-        if provider == 'lm_studio':
-            return OPENAI_SUPPORT and bool(config.base_url and config.model)
         if provider == 'custom':
-            return REQUESTS_SUPPORT and bool(config.base_url and config.model)
+            return REQUESTS_SUPPORT and bool(config.api_key and config.base_url and config.model)
         return False
+
+    def _is_lm_studio_ready(self) -> bool:
+        """LM Studio / 本地 OpenAI 兼容接口是否配置完整。"""
+        config = self.api_configs.get('lm_studio')
+        if not config:
+            return False
+        return OPENAI_SUPPORT and bool(config.base_url and config.model)
+
+    def _is_builtin_config_ready(self, provider: str) -> bool:
+        if provider == 'lm_studio':
+            return self._is_lm_studio_ready()
+        return self._is_cloud_provider_ready(provider)
 
     def _is_custom_local_model_ready(self, provider: str) -> bool:
         config = self.custom_local_models.get(provider)
@@ -175,9 +186,18 @@ class TranslationEngine:
         """获取可用的翻译提供商列表"""
         providers = []
 
-        for provider in ('gemini', 'openai', 'claude', 'lm_studio', 'custom', 'deepseek'):
-            if self._is_builtin_config_ready(provider):
-                providers.append(provider)
+        if self._is_cloud_provider_ready('gemini'):
+            providers.append('gemini')
+        if self._is_cloud_provider_ready('openai'):
+            providers.append('openai')
+        if self._is_cloud_provider_ready('claude'):
+            providers.append('claude')
+        if self._is_cloud_provider_ready('deepseek'):
+            providers.append('deepseek')
+        if self._is_lm_studio_ready():
+            providers.append('lm_studio')
+        if self._is_cloud_provider_ready('custom'):
+            providers.append('custom')
 
         for provider in self.custom_local_models:
             if self._is_custom_local_model_ready(provider):
@@ -821,34 +841,43 @@ def create_engine_with_config(config: dict) -> TranslationEngine:
 
     api_configs = config.get('api_configs', {})
 
+    provider_map = {
+        'gemini': APIProvider.GEMINI,
+        'openai': APIProvider.OPENAI,
+        'claude': APIProvider.CLAUDE,
+        'deepseek': APIProvider.DEEPSEEK,
+        'lm_studio': APIProvider.LM_STUDIO,
+        'custom': APIProvider.CUSTOM,
+    }
+
     for name, cfg in api_configs.items():
-        if not cfg.get('api_key'):
+        if name not in provider_map:
             continue
 
-        provider = APIProvider.GEMINI  # 默认
-        if name == 'gemini':
-            provider = APIProvider.GEMINI
-        elif name == 'openai':
-            provider = APIProvider.OPENAI
-        elif name == 'claude':
-            provider = APIProvider.CLAUDE
-        elif name == 'deepseek':
-            provider = APIProvider.DEEPSEEK
-        elif name == 'lm_studio':
-            provider = APIProvider.LM_STUDIO
+        if name in ('gemini', 'openai', 'claude', 'deepseek'):
+            if not cfg.get('api_key') or not cfg.get('model'):
+                continue
         elif name == 'custom':
-            provider = APIProvider.CUSTOM
+            if not cfg.get('api_key') or not cfg.get('base_url') or not cfg.get('model'):
+                continue
+        elif name == 'lm_studio':
+            if not cfg.get('base_url') or not cfg.get('model'):
+                continue
 
         engine.add_api_config(name, APIConfig(
-            provider=provider,
+            provider=provider_map[name],
             api_key=cfg.get('api_key', ''),
             model=cfg.get('model', ''),
             base_url=cfg.get('base_url', ''),
-            temperature=cfg.get('temperature', 0.2)
+            temperature=cfg.get('temperature', 0.2),
+            max_tokens=cfg.get('max_tokens', 4096)
         ))
 
     # 自定义本地模型
     for name, cfg in config.get('custom_local_models', {}).items():
+        if not cfg.get('base_url') or not cfg.get('model_id'):
+            continue
+
         engine.add_custom_local_model(
             name=name,
             display_name=cfg.get('display_name', name),
@@ -857,11 +886,23 @@ def create_engine_with_config(config: dict) -> TranslationEngine:
             api_key=cfg.get('api_key', 'lm-studio')
         )
 
-    # 设置降级提供商
-    if 'lm_studio' in api_configs and api_configs['lm_studio'].get('api_key'):
+    # 设置降级提供商：优先 LM Studio，其次本地模型，再次云端候选。
+    if engine._is_lm_studio_ready():
         engine.set_fallback_provider('lm_studio')
     elif engine.custom_local_models:
-        engine.set_fallback_provider(list(engine.custom_local_models.keys())[0])
+        for provider_name in engine.custom_local_models:
+            if engine._is_custom_local_model_ready(provider_name):
+                engine.set_fallback_provider(provider_name)
+                break
+    else:
+        for candidate in ('deepseek', 'openai', 'gemini', 'claude', 'custom'):
+            if candidate == 'custom':
+                if engine._is_cloud_provider_ready('custom'):
+                    engine.set_fallback_provider('custom')
+                    break
+            elif engine._is_cloud_provider_ready(candidate):
+                engine.set_fallback_provider(candidate)
+                break
 
     return engine
 

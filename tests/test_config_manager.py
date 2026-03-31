@@ -1,6 +1,9 @@
-from pathlib import Path
+import pytest
 
 from config_manager import ConfigManager
+
+
+pytestmark = pytest.mark.unit
 
 
 def test_config_manager_uses_temp_paths(tmp_path):

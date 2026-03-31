@@ -1,4 +1,10 @@
+import pytest
+
 from pathlib import Path
+
+
+pytestmark = pytest.mark.unit
+
 
 def test_book_translator_gui_contains_open_admin_audit():
     text = Path("book_translator_gui.pyw").read_text(encoding="utf-8")

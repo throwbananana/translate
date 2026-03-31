@@ -1,4 +1,9 @@
+import pytest
+
 from file_processor import FileProcessor
+
+
+pytestmark = pytest.mark.unit
 
 
 def test_split_text_into_segments_respects_max_length():

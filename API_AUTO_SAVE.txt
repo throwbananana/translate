@@ -115,7 +115,7 @@ For each API type (Gemini, OpenAI, Custom):
 Example config content:
 {
   "gemini": {
-    "api_key": "AIzaSyDsi7DlvrIS41MlfPLTEEwqxfTAsryjxmk",
+    "api_key": "<your-gemini-api-key>",
     "model": "gemini-2.5-flash"
   },
   "openai": {

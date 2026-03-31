@@ -42,3 +42,14 @@ server_data/
 *.sqlite3
 *.db
 *.mbox
+
+# Local secrets
+.env
+.env.*
+
+# Manual test outputs / temp files
+manual_outputs/
+tmp/
+_bundle_extract/
+*.bak
+*.tmp

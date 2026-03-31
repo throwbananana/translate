@@ -1,5 +1,10 @@
+import pytest
+
 import translation_engine as te
 from translation_engine import APIConfig, APIProvider, TranslationEngine
+
+
+pytestmark = pytest.mark.unit
 
 
 def test_get_available_providers_filters_incomplete_configs(monkeypatch):

@@ -23,8 +23,12 @@ if errorlevel 1 goto error
 
 echo.
 echo ========================================
-echo Step 3/3: Test translation
+echo Step 3/3: Test translation ^(requires GEMINI_API_KEY^)
 echo ========================================
+if "%GEMINI_API_KEY%"=="" (
+echo Missing GEMINI_API_KEY. Please set your own key before running translation tests.
+goto error
+)
 py test_actual_translation.py
 if errorlevel 1 goto error
 
@@ -35,12 +39,11 @@ echo ========================================
 echo.
 echo Generated files:
 echo   - Test data: test_1k.txt ~ test_500k.txt
-echo   - Translation: sample_book_translation_test.txt
-echo   - Translation: test_50k_translation_test.txt
-echo   - Report: test_report.md
+echo   - Translation: manual_outputs\sample_book_翻译测试.txt
+echo   - Translation: manual_outputs\test_50k_翻译测试.txt
 echo.
 echo Next steps:
-echo   1. Check test_report.md for details
+echo   1. Check manual_outputs for translation outputs
 echo   2. Run book_translator_gui.pyw to use the app
 echo.
 goto end

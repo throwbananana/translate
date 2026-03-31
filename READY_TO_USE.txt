@@ -78,7 +78,7 @@ WHAT YOU GET
 ✓ Fast loading (< 1 second for any size)
 ✓ Smooth interface (no lag)
 ✓ Excellent translation quality
-✓ Pre-configured API (Gemini)
+✓ Supports multiple configurable APIs
 ✓ Smart file naming
 ✓ Real-time progress
 ✓ Preview mode for large files
@@ -128,13 +128,15 @@ Translation results:
 API CONFIGURATION
 ========================================
 
-Already configured:
-  ✓ Gemini API Key: AIzaSyDsi7DlvrIS41MlfPLTEEwqxfTAsryjxmk
-  ✓ Model: gemini-2.5-flash
-  ✓ Status: Active and working
+Recommended configuration:
+  ✓ Prepare your own Gemini API Key
+  ✓ Default recommended model: gemini-2.5-flash
+  ✓ Or configure another supported provider in the app
 
-No configuration needed!
-Just start and translate!
+Before real translation:
+  1. Open "配置 API"
+  2. Fill in your own key
+  3. Save and test connection
 
 ========================================
 PERFORMANCE
@@ -251,7 +253,7 @@ File Formats:
   ✓ EPUB - Full support (ebooklib)
 
 API Services:
-  ✓ Gemini API - Pre-configured
+  ✓ Gemini API - Supported
   ✓ OpenAI API - Supported
   ✓ Custom API - Supported
 
@@ -263,7 +265,7 @@ Before you start:
   ✓ Python installed
   ✓ Dependencies installed
   ✓ Files in correct directory
-  ✓ API key configured
+  ✓ Your own API key prepared
 
 Program features:
   ✓ All bugs fixed
@@ -297,7 +299,7 @@ WHAT HAPPENS NEXT
 
 2. You see:
    - File selection area
-   - API status: "已配置 API Key..." (GREEN)
+   - API status: "已配置 API Key..." (if configured, GREEN)
    - Translation area (two tabs)
    - Progress bar
    - Control buttons
@@ -356,7 +358,7 @@ SUCCESS CRITERIA
 
 You know it's working when:
   ✓ Program window opens smoothly
-  ✓ API status shows green "已配置 API Key..."
+  ✓ API status turns green after your key is configured
   ✓ Files load instantly
   ✓ Translation produces Chinese text
   ✓ Export saves file successfully

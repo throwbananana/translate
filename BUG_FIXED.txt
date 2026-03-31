@@ -79,7 +79,7 @@ Next Steps
 2. The program will start normally
 
 3. You'll see:
-   - "已配置 API Key: AIzaSyDsi..." in GREEN
+   - "已配置 API Key: 已隐藏" in GREEN
    - All features ready to use
 
 4. Start translating!
