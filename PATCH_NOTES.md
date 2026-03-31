@@ -1,39 +1,47 @@
-# translate 升级优化补丁包
+# translate 升级完善补丁包（当前主分支定向）
 
-包含内容：
+这个补丁包针对当前仓库状态做了 3 组修复：
 
-1. `0001-translation-engine-provider-readiness.patch`
-   - 仅把“已正确配置”的 provider 暴露给可用列表。
-   - 未配置完成时返回更清晰的错误，而不是误判为可用。
+1. `0001-book-translator-gui-admin-audit-hotfix.patch`
+   - 修复 `open_admin_audit()` 被错误嵌套进 `open_community_upload()` 的问题
+   - 修复管理员未启用提示里的字符串换行，避免 GUI 语法错误
+   - 恢复社区管理按钮可正常绑定类方法
 
-2. `0002-config-manager-security-env-overrides.patch`
-   - 新增 `security.admin_password` 默认配置。
-   - 支持环境变量覆盖：
-     - `BOOK_TRANSLATOR_ADMIN_PASSWORD`
-     - `ZLIBRARY_EMAIL`
-     - `ZLIBRARY_PASSWORD`
-     - `ZLIBRARY_COOKIE`
-     - `ZLIBRARY_DOMAIN`
-     - `ANNAS_ARCHIVE_DOMAIN`
-   - 新增 `get_admin_password()` 辅助方法。
+2. `0002-book-translator-gui-json-hardening.patch`
+   - 新增 `_extract_first_json_object()`
+   - 提升 AI 自动识别书籍元数据时的 JSON 提取容错
+   - 兼容 markdown 代码块里的 JSON
 
-3. `0003-book-translator-gui-fix-ai-metadata-and-admin-auth.patch`
-   - 修复社区上传页中 AI 自动识别元数据调用错误接口的问题。
-   - 新增通用文本生成辅助方法，复用现有解析 API。
-   - 管理员入口不再使用硬编码密码 `admin`，改为读取配置或环境变量，并使用 `hmac.compare_digest()` 校验。
+3. `0003-tests-gui-structure-smoke.patch`
+   - 新增 `tests/test_gui_structure.py`
+   - 用 `py_compile` 防止 GUI 再次引入语法错误
+   - 用 AST 校验关键方法确实是 `BookTranslatorGUI` 的直接方法，防止再次被错误嵌套
 
-4. `0004-tests-and-gitignore.patch`
-   - 扩展 `ConfigManager` 环境变量覆盖测试。
-   - 新增 `TranslationEngine` provider 就绪性测试。
-   - `.gitignore` 补充 `server_data/` 与 `*.mbox`。
+## 推荐应用顺序
 
-建议应用顺序：
-
-```bash
-git apply 0001-translation-engine-provider-readiness.patch
-git apply 0002-config-manager-security-env-overrides.patch
-git apply 0003-book-translator-gui-fix-ai-metadata-and-admin-auth.patch
-git apply 0004-tests-and-gitignore.patch
+```powershell
+git apply 0001-book-translator-gui-admin-audit-hotfix.patch
+git apply 0002-book-translator-gui-json-hardening.patch
+git apply 0003-tests-gui-structure-smoke.patch
+pytest tests/test_config_manager.py tests/test_gui_structure.py
 ```
 
-`0003` 是针对大体量 GUI 文件的定点上下文补丁。建议优先用 `git apply --reject 0003-book-translator-gui-fix-ai-metadata-and-admin-auth.patch`，若出现少量 `.rej`，按补丁里的函数名搜索后手工套用即可。
+## 如果 0001 因为 GUI 大文件偏移而失败
+
+可改用包内的 `fix_book_translator_gui_admin_audit.py`：
+
+```powershell
+py .\fix_book_translator_gui_admin_audit.py .\book_translator_gui.pyw
+```
+
+它会：
+- 备份原文件为 `book_translator_gui.pyw.bak`
+- 自动修复 `open_admin_audit` 缩进与字符串问题
+
+## 说明
+
+这次补丁故意保持“小补丁、低风险”，没有做大规模重构，目的是优先让当前仓库恢复到：
+- GUI 可启动
+- 社区页不回归
+- AI 元数据自动识别更稳
+- 测试能拦住同类错误

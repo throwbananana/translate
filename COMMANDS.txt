@@ -1,0 +1,8 @@
+# 在仓库根目录执行
+Expand-Archive .\translate-upgrade-fix-bundle-v3.zip -DestinationPath .\patch-v3 -Force
+py .\patch-v3\apply_translate_fix_bundle_v3.py .
+py -m pytest tests/test_config_manager.py tests/test_gui_structure.py
+
+# 如果还没安装 pytest
+py -m pip install -r requirements-dev.txt
+py -m pytest tests/test_config_manager.py tests/test_gui_structure.py

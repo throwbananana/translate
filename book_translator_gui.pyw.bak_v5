@@ -3933,14 +3933,14 @@ class BookTranslatorGUI:
         btn = ttk.Button(frame, text="立即分享 (公开)", command=do_upload)
         btn.pack(pady=20, fill=tk.X)
 
-
-    def open_admin_audit(self):
+        def open_admin_audit(self):
         """打开管理员管理界面（用于删除记录）"""
         expected_password = (self.config_manager.get_admin_password() or "").strip()
         if not expected_password:
             messagebox.showwarning(
                 "未启用",
-                "图书馆管理功能未启用。\n请通过环境变量 BOOK_TRANSLATOR_ADMIN_PASSWORD 或配置项 security.admin_password 设置管理员密码。"
+                "图书馆管理功能未启用。
+请通过环境变量 BOOK_TRANSLATOR_ADMIN_PASSWORD 或配置项 security.admin_password 设置管理员密码。"
             )
             return
 
@@ -3950,11 +3950,12 @@ class BookTranslatorGUI:
         if not hmac.compare_digest(pwd, expected_password):
             messagebox.showerror("错误", "密码错误")
             return
-
+            
         audit_win = tk.Toplevel(self.root)
         audit_win.title("图书馆管理 (Library Admin)")
         audit_win.geometry("800x500")
-
+        
+        # 列表
         columns = ("id", "title", "uploader", "date", "status")
         tree = ttk.Treeview(audit_win, columns=columns, show="headings")
         tree.heading("id", text="ID")
@@ -3963,38 +3964,30 @@ class BookTranslatorGUI:
         tree.heading("date", text="日期")
         tree.heading("status", text="状态")
         tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
+        
         def refresh():
             tree.delete(*tree.get_children())
+            # 此时显示的是已公开的书籍，供管理员删除
             books = self.community_manager.get_public_books()
             for b in books:
-                tree.insert(
-                    "",
-                    "end",
-                    values=(
-                        b.get("id", ""),
-                        b.get("title", ""),
-                        b.get("uploader", ""),
-                        b.get("date", ""),
-                        b.get("status", "approved"),
-                    ),
-                )
-
+                tree.insert("", "end", values=(b['id'], b['title'], b['uploader'], b['date'], b.get('status', 'approved')))
+        
         refresh()
-
+        
         btn_frame = ttk.Frame(audit_win, padding=10)
         btn_frame.pack(fill=tk.X)
-
+        
         def delete_entry():
             sel = tree.selection()
-            if not sel:
-                return
-            bid = str(tree.item(sel[0])["values"][0])
-
+            if not sel: return
+            bid = str(tree.item(sel[0])['values'][0])
+            
             if messagebox.askyesno("确认", "确定从公共列表中删除此书籍吗？"):
+                # 复用 rejection 逻辑进行删除
                 library = self.community_manager.get_public_books()
-                new_library = [b for b in library if str(b.get("id", "")) != bid]
+                new_library = [b for b in library if b['id'] != bid]
                 self.community_manager._save_json(self.community_manager.library_file, new_library)
+                
                 messagebox.showinfo("成功", "已删除")
                 refresh()
                 self.refresh_community_list()
