@@ -20,6 +20,13 @@ from typing import Optional, Dict, List, Callable, Generator, Any
 from dataclasses import dataclass
 from enum import Enum
 
+from provider_utils import (
+    choose_fallback_provider,
+    list_ready_builtin_providers,
+    list_ready_custom_local_models,
+    provider_ready,
+)
+
 # API 支持检测
 try:
     import google.generativeai as genai
@@ -54,6 +61,21 @@ class APIProvider(Enum):
     DEEPSEEK = "deepseek"
     LM_STUDIO = "lm_studio"
     CUSTOM = "custom"
+
+
+PROVIDER_ENUM_MAP = {
+    "gemini": APIProvider.GEMINI,
+    "openai": APIProvider.OPENAI,
+    "claude": APIProvider.CLAUDE,
+    "deepseek": APIProvider.DEEPSEEK,
+    "lm_studio": APIProvider.LM_STUDIO,
+    "custom": APIProvider.CUSTOM,
+}
+
+
+def provider_enum_for_name(provider_name: str) -> Optional[APIProvider]:
+    """根据 provider 名称返回枚举，未知名称返回 None。"""
+    return PROVIDER_ENUM_MAP.get(provider_name)
 
 
 @dataclass
@@ -135,30 +157,43 @@ class TranslationEngine:
         """设置降级时使用的提供商"""
         self.fallback_provider = provider_name
 
+    def _support_flags(self) -> Dict[str, bool]:
+        return {
+            "gemini": GEMINI_SUPPORT,
+            "openai": OPENAI_SUPPORT,
+            "claude": CLAUDE_SUPPORT,
+            "requests": REQUESTS_SUPPORT,
+        }
+
+    def _serialize_api_configs(self) -> Dict[str, Dict[str, Any]]:
+        serialized = {}
+        for name, config in self.api_configs.items():
+            serialized[name] = {
+                "api_key": config.api_key,
+                "model": config.model,
+                "base_url": config.base_url,
+                "temperature": config.temperature,
+                "max_tokens": config.max_tokens,
+            }
+        return serialized
+
     def _is_cloud_provider_ready(self, provider: str) -> bool:
         """云端提供商是否配置完整。"""
-        config = self.api_configs.get(provider)
-        if not config:
+        if provider == "lm_studio":
             return False
-
-        if provider == 'gemini':
-            return GEMINI_SUPPORT and bool(config.api_key and config.model)
-        if provider == 'openai':
-            return OPENAI_SUPPORT and bool(config.api_key and config.model)
-        if provider == 'claude':
-            return CLAUDE_SUPPORT and bool(config.api_key and config.model)
-        if provider == 'deepseek':
-            return OPENAI_SUPPORT and bool(config.api_key and config.model)
-        if provider == 'custom':
-            return REQUESTS_SUPPORT and bool(config.api_key and config.base_url and config.model)
-        return False
+        return provider_ready(
+            provider,
+            api_configs=self._serialize_api_configs(),
+            support_flags=self._support_flags(),
+        )
 
     def _is_lm_studio_ready(self) -> bool:
         """LM Studio / 本地 OpenAI 兼容接口是否配置完整。"""
-        config = self.api_configs.get('lm_studio')
-        if not config:
-            return False
-        return OPENAI_SUPPORT and bool(config.base_url and config.model)
+        return provider_ready(
+            "lm_studio",
+            api_configs=self._serialize_api_configs(),
+            support_flags=self._support_flags(),
+        )
 
     def _is_builtin_config_ready(self, provider: str) -> bool:
         if provider == 'lm_studio':
@@ -166,8 +201,11 @@ class TranslationEngine:
         return self._is_cloud_provider_ready(provider)
 
     def _is_custom_local_model_ready(self, provider: str) -> bool:
-        config = self.custom_local_models.get(provider)
-        return OPENAI_SUPPORT and bool(config and config.get('base_url') and config.get('model_id'))
+        return provider_ready(
+            provider,
+            custom_local_models=self.custom_local_models,
+            support_flags=self._support_flags(),
+        )
 
     def _select_provider(self, provider: Optional[str]) -> str:
         if provider is not None:
@@ -184,26 +222,15 @@ class TranslationEngine:
 
     def get_available_providers(self) -> List[str]:
         """获取可用的翻译提供商列表"""
-        providers = []
-
-        if self._is_cloud_provider_ready('gemini'):
-            providers.append('gemini')
-        if self._is_cloud_provider_ready('openai'):
-            providers.append('openai')
-        if self._is_cloud_provider_ready('claude'):
-            providers.append('claude')
-        if self._is_cloud_provider_ready('deepseek'):
-            providers.append('deepseek')
-        if self._is_lm_studio_ready():
-            providers.append('lm_studio')
-        if self._is_cloud_provider_ready('custom'):
-            providers.append('custom')
-
-        for provider in self.custom_local_models:
-            if self._is_custom_local_model_ready(provider):
-                providers.append(provider)
-
-        return providers
+        api_configs = self._serialize_api_configs()
+        support_flags = self._support_flags()
+        return list_ready_builtin_providers(
+            api_configs=api_configs,
+            support_flags=support_flags,
+        ) + list_ready_custom_local_models(
+            custom_local_models=self.custom_local_models,
+            support_flags=support_flags,
+        )
 
     def translate(self, text: str, target_lang: str,
                   provider: str = None,
@@ -583,7 +610,7 @@ class TranslationEngine:
             raise ValueError(f"未找到本地模型: {model_key}")
 
         client = openai.OpenAI(
-            api_key=config.get('api_key', 'lm-studio'),
+            api_key=config.get('api_key') or 'lm-studio',
             base_url=config['base_url']
         )
 
@@ -648,7 +675,7 @@ class TranslationEngine:
         if provider in self.custom_local_models:
             config = self.custom_local_models[provider]
             client = openai.OpenAI(
-                api_key=config.get('api_key', 'lm-studio'),
+                api_key=config.get('api_key') or 'lm-studio',
                 base_url=config['base_url']
             )
             model = config['model_id']
@@ -658,7 +685,9 @@ class TranslationEngine:
                 yield f"[错误: 未配置 {provider}]"
                 return
 
-            client_kwargs = {'api_key': api_config.api_key}
+            client_kwargs = {
+                'api_key': api_config.api_key or ("lm-studio" if provider == "lm_studio" else api_config.api_key)
+            }
             if api_config.base_url:
                 client_kwargs['base_url'] = api_config.base_url
 
@@ -841,31 +870,27 @@ def create_engine_with_config(config: dict) -> TranslationEngine:
 
     api_configs = config.get('api_configs', {})
 
-    provider_map = {
-        'gemini': APIProvider.GEMINI,
-        'openai': APIProvider.OPENAI,
-        'claude': APIProvider.CLAUDE,
-        'deepseek': APIProvider.DEEPSEEK,
-        'lm_studio': APIProvider.LM_STUDIO,
-        'custom': APIProvider.CUSTOM,
+    support_flags = {
+        "gemini": GEMINI_SUPPORT,
+        "openai": OPENAI_SUPPORT,
+        "claude": CLAUDE_SUPPORT,
+        "requests": REQUESTS_SUPPORT,
     }
 
     for name, cfg in api_configs.items():
-        if name not in provider_map:
+        provider_enum = provider_enum_for_name(name)
+        if provider_enum is None:
             continue
 
-        if name in ('gemini', 'openai', 'claude', 'deepseek'):
-            if not cfg.get('api_key') or not cfg.get('model'):
-                continue
-        elif name == 'custom':
-            if not cfg.get('api_key') or not cfg.get('base_url') or not cfg.get('model'):
-                continue
-        elif name == 'lm_studio':
-            if not cfg.get('base_url') or not cfg.get('model'):
-                continue
+        if not provider_ready(
+            name,
+            api_configs={name: cfg},
+            support_flags=support_flags,
+        ):
+            continue
 
         engine.add_api_config(name, APIConfig(
-            provider=provider_map[name],
+            provider=provider_enum,
             api_key=cfg.get('api_key', ''),
             model=cfg.get('model', ''),
             base_url=cfg.get('base_url', ''),
@@ -875,7 +900,11 @@ def create_engine_with_config(config: dict) -> TranslationEngine:
 
     # 自定义本地模型
     for name, cfg in config.get('custom_local_models', {}).items():
-        if not cfg.get('base_url') or not cfg.get('model_id'):
+        if not provider_ready(
+            name,
+            custom_local_models={name: cfg},
+            support_flags=support_flags,
+        ):
             continue
 
         engine.add_custom_local_model(
@@ -883,26 +912,16 @@ def create_engine_with_config(config: dict) -> TranslationEngine:
             display_name=cfg.get('display_name', name),
             base_url=cfg.get('base_url', ''),
             model_id=cfg.get('model_id', ''),
-            api_key=cfg.get('api_key', 'lm-studio')
+            api_key=cfg.get('api_key') or 'lm-studio'
         )
 
-    # 设置降级提供商：优先 LM Studio，其次本地模型，再次云端候选。
-    if engine._is_lm_studio_ready():
-        engine.set_fallback_provider('lm_studio')
-    elif engine.custom_local_models:
-        for provider_name in engine.custom_local_models:
-            if engine._is_custom_local_model_ready(provider_name):
-                engine.set_fallback_provider(provider_name)
-                break
-    else:
-        for candidate in ('deepseek', 'openai', 'gemini', 'claude', 'custom'):
-            if candidate == 'custom':
-                if engine._is_cloud_provider_ready('custom'):
-                    engine.set_fallback_provider('custom')
-                    break
-            elif engine._is_cloud_provider_ready(candidate):
-                engine.set_fallback_provider(candidate)
-                break
+    fallback_provider = choose_fallback_provider(
+        api_configs=engine._serialize_api_configs(),
+        custom_local_models=engine.custom_local_models,
+        support_flags=support_flags,
+    )
+    if fallback_provider:
+        engine.set_fallback_provider(fallback_provider)
 
     return engine
 

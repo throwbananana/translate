@@ -76,7 +76,12 @@ from config_manager import ConfigManager, get_config_manager
 from translation_memory import TranslationMemory, get_translation_memory
 from glossary_manager import GlossaryManager, get_glossary_manager
 from online_search import OnlineSearchManager
-from translation_engine import TranslationEngine, APIConfig, APIProvider
+from translation_engine import (
+    TranslationEngine,
+    APIConfig,
+    APIProvider,
+    provider_enum_for_name,
+)
 from cost_estimator import CostEstimator
 from docx_handler import DocxHandler
 from audio_manager import AudioManager
@@ -87,6 +92,24 @@ from tm_editor import TMEditorDialog
 from format_converter import FormatConverterDialog
 from cloud_upload import CloudUploader
 from community_manager import CommunityManager
+from provider_utils import (
+    choose_fallback_provider,
+    provider_error_message,
+    provider_ready,
+    validate_builtin_provider,
+)
+from translation_review import (
+    apply_manual_translation as apply_manual_translation_review,
+    is_translation_incomplete as review_is_translation_incomplete,
+    verify_and_retry_segments as review_verify_and_retry_segments,
+)
+from ui.analysis_panel import AnalysisPanel
+from ui.content_notebook import ContentNotebook
+from ui.failed_segments_panel import FailedSegmentsPanel
+from ui.glossary_dialog import GlossaryEditorDialog
+from ui.library_panel import LibraryPanel
+from ui.toc_panel import TocPanel
+from ui.workstation import ActionBar, ApiPanel, FilePanel, ProgressPanel
 
 DEFAULT_TARGET_LANGUAGE = "中文"
 DEFAULT_LM_STUDIO_CONFIG = {
@@ -109,213 +132,6 @@ APP_VERSION = "2.3.1"
 
 # 配置文件版本号
 CONFIG_VERSION = APP_VERSION
-
-class GlossaryEditorDialog:
-    """术语表编辑器对话框"""
-    def __init__(self, parent, glossary_manager):
-        self.parent = parent
-        self.gm = glossary_manager
-        self.dialog = tk.Toplevel(parent)
-        self.dialog.title("术语表管理 (Glossary Manager)")
-        self.dialog.geometry("900x600")
-        self.dialog.transient(parent)
-        
-        self.current_glossary_name = "default"
-        self.setup_ui()
-        self.refresh_glossary_list()
-        self.load_terms()
-
-    def setup_ui(self):
-        # 顶部工具栏
-        top_frame = ttk.Frame(self.dialog, padding=10)
-        top_frame.pack(fill=tk.X)
-        
-        ttk.Label(top_frame, text="选择术语表:").pack(side=tk.LEFT)
-        self.glossary_combo = ttk.Combobox(top_frame, state="readonly", width=20)
-        self.glossary_combo.pack(side=tk.LEFT, padx=5)
-        self.glossary_combo.bind("<<ComboboxSelected>>", self.on_glossary_change)
-        
-        ttk.Button(top_frame, text="新建表", command=self.create_glossary).pack(side=tk.LEFT, padx=2)
-        ttk.Button(top_frame, text="删除表", command=self.delete_glossary).pack(side=tk.LEFT, padx=2)
-        
-        ttk.Label(top_frame, text="搜索:").pack(side=tk.LEFT, padx=(20, 5))
-        self.search_var = tk.StringVar()
-        self.search_entry = ttk.Entry(top_frame, textvariable=self.search_var, width=20)
-        self.search_entry.pack(side=tk.LEFT)
-        self.search_entry.bind("<KeyRelease>", self.filter_terms)
-        
-        # 中间列表区域
-        list_frame = ttk.Frame(self.dialog, padding=10)
-        list_frame.pack(fill=tk.BOTH, expand=True)
-        
-        columns = ("source", "target", "notes", "category")
-        self.tree = ttk.Treeview(list_frame, columns=columns, show="headings", selectmode="browse")
-        self.tree.heading("source", text="原文术语")
-        self.tree.heading("target", text="目标翻译")
-        self.tree.heading("notes", text="备注")
-        self.tree.heading("category", text="分类")
-        
-        self.tree.column("source", width=200)
-        self.tree.column("target", width=200)
-        self.tree.column("notes", width=200)
-        self.tree.column("category", width=100)
-        
-        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scrollbar.set)
-        
-        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.tree.bind("<Double-1>", self.edit_term)
-        
-        # 底部按钮区域
-        btn_frame = ttk.Frame(self.dialog, padding=10)
-        btn_frame.pack(fill=tk.X)
-        
-        ttk.Button(btn_frame, text="添加术语", command=self.add_term).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="编辑选中", command=self.edit_term).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="删除选中", command=self.delete_term).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="刷新", command=self.load_terms).pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(btn_frame, text="关闭", command=self.dialog.destroy).pack(side=tk.RIGHT, padx=5)
-
-    def refresh_glossary_list(self):
-        glossaries = self.gm.list_glossaries()
-        names = [g['name'] for g in glossaries]
-        if not names:
-            self.gm.create_glossary("default", "默认术语表")
-            names = ["default"]
-            
-        self.glossary_combo['values'] = names
-        if self.current_glossary_name in names:
-            self.glossary_combo.set(self.current_glossary_name)
-        elif names:
-            self.glossary_combo.set(names[0])
-            self.current_glossary_name = names[0]
-            
-    def on_glossary_change(self, event):
-        self.current_glossary_name = self.glossary_combo.get()
-        self.load_terms()
-        
-    def load_terms(self):
-        self.tree.delete(*self.tree.get_children())
-        if not self.current_glossary_name: return
-        
-        # 确保加载
-        self.gm.load_glossary(self.current_glossary_name)
-        terms = self.gm.get_all_terms(self.current_glossary_name)
-        
-        query = self.search_var.get().lower()
-        for term in terms:
-            if query and (query not in term['source'].lower() and query not in term.get('target', '').lower()):
-                continue
-            self.tree.insert("", "end", values=(
-                term['source'],
-                term.get('target', ''),
-                term.get('notes', ''),
-                term.get('category', '')
-            ))
-            
-    def filter_terms(self, event):
-        self.load_terms()
-        
-    def add_term(self):
-        self.edit_term_dialog(None)
-        
-    def edit_term(self, event=None):
-        selected = self.tree.selection()
-        if not selected and event is None: return
-        if not selected: return # Double click on empty area
-        
-        item = self.tree.item(selected[0])
-        values = item['values']
-        self.edit_term_dialog({
-            'source': values[0],
-            'target': values[1],
-            'notes': values[2],
-            'category': values[3]
-        })
-
-    def edit_term_dialog(self, term_data):
-        is_edit = term_data is not None
-        title = "编辑术语" if is_edit else "添加术语"
-        
-        edit_win = tk.Toplevel(self.dialog)
-        edit_win.title(title)
-        edit_win.geometry("400x300")
-        edit_win.transient(self.dialog)
-        edit_win.grab_set()
-        
-        frame = ttk.Frame(edit_win, padding=20)
-        frame.pack(fill=tk.BOTH, expand=True)
-        
-        ttk.Label(frame, text="原文术语:").grid(row=0, column=0, sticky=tk.W, pady=5)
-        source_var = tk.StringVar(value=term_data['source'] if is_edit else "")
-        source_entry = ttk.Entry(frame, textvariable=source_var, width=30)
-        source_entry.grid(row=0, column=1, pady=5)
-        if is_edit: source_entry.config(state='readonly') # Source is key, cannot change
-        
-        ttk.Label(frame, text="目标翻译:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        target_var = tk.StringVar(value=term_data['target'] if is_edit else "")
-        ttk.Entry(frame, textvariable=target_var, width=30).grid(row=1, column=1, pady=5)
-        
-        ttk.Label(frame, text="备注:").grid(row=2, column=0, sticky=tk.W, pady=5)
-        notes_var = tk.StringVar(value=term_data['notes'] if is_edit else "")
-        ttk.Entry(frame, textvariable=notes_var, width=30).grid(row=2, column=1, pady=5)
-        
-        ttk.Label(frame, text="分类:").grid(row=3, column=0, sticky=tk.W, pady=5)
-        cat_var = tk.StringVar(value=term_data['category'] if is_edit else "")
-        ttk.Entry(frame, textvariable=cat_var, width=30).grid(row=3, column=1, pady=5)
-        
-        def save():
-            src = source_var.get().strip()
-            tgt = target_var.get().strip()
-            if not src or not tgt:
-                messagebox.showwarning("错误", "原文和译文不能为空")
-                return
-            
-            if is_edit:
-                self.gm.update_term(self.current_glossary_name, src, tgt, notes_var.get(), cat_var.get())
-            else:
-                self.gm.add_term(self.current_glossary_name, src, tgt, notes_var.get(), cat_var.get())
-            
-            self.load_terms()
-            edit_win.destroy()
-            
-        ttk.Button(frame, text="保存", command=save).grid(row=4, column=0, columnspan=2, pady=20)
-
-    def delete_term(self):
-        selected = self.tree.selection()
-        if not selected: return
-        
-        item = self.tree.item(selected[0])
-        src = item['values'][0]
-        
-        if messagebox.askyesno("确认", f"确定删除术语 '{src}' 吗?"):
-            self.gm.remove_term(self.current_glossary_name, src)
-            self.load_terms()
-
-    def create_glossary(self):
-        name = simpledialog.askstring("新建术语表", "请输入术语表名称 (英文/数字):")
-        if name:
-            if self.gm.create_glossary(name):
-                self.refresh_glossary_list()
-                self.glossary_combo.set(name)
-                self.on_glossary_change(None)
-            else:
-                messagebox.showerror("错误", "创建失败，可能名称已存在")
-
-    def delete_glossary(self):
-        name = self.current_glossary_name
-        if name == "default":
-            messagebox.showwarning("警告", "不能删除默认术语表")
-            return
-            
-        if messagebox.askyesno("确认", f"确定删除术语表 '{name}' 吗? 此操作不可恢复!"):
-            self.gm.delete_glossary(name)
-            self.refresh_glossary_list()
-            self.on_glossary_change(None)
-
 
 class BookTranslatorGUI:
     """书籍翻译工具主界面"""
@@ -425,6 +241,37 @@ class BookTranslatorGUI:
         except Exception as e:
             print(f"Failed to save batch queue: {e}")
 
+    def _get_support_formats_text(self):
+        """构建文件选择区支持格式提示文本。"""
+        format_labels = {
+            ".txt": "TXT",
+            ".md": "Markdown",
+            ".markdown": "Markdown",
+            ".pdf": "PDF",
+            ".epub": "EPUB",
+            ".docx": "DOCX",
+            ".rtf": "RTF",
+        }
+        formats = []
+        for ext in self.file_processor.get_supported_formats():
+            label = format_labels.get(ext)
+            if label and label not in formats:
+                formats.append(label)
+        return f"支持格式: {', '.join(formats)}"
+
+    def _builtin_provider_enum(self, api_type):
+        """将内置 provider 名称映射为枚举。"""
+        return provider_enum_for_name(api_type) or APIProvider.GEMINI
+
+    def _engine_provider_name(self, api_type):
+        """翻译引擎使用的 provider 标识。"""
+        provider_enum = provider_enum_for_name(api_type)
+        if provider_enum is not None:
+            return provider_enum.value
+        if api_type in self.custom_local_models:
+            return api_type
+        return APIProvider.GEMINI.value
+
     def setup_ui(self):
         """设置用户界面"""
         # 创建菜单栏
@@ -460,169 +307,47 @@ class BookTranslatorGUI:
         
         # 指向工作台，保持后续代码兼容
         main_frame = self.workstation_frame
+        api_names = [name for name, _, _ in self.get_all_available_apis()]
 
         # 1. 文件选择区域
-        file_frame = ttk.LabelFrame(main_frame, text="文件选择", padding="10")
-        file_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        file_frame.columnconfigure(1, weight=1)
-
-        ttk.Label(file_frame, text="选择文件:").grid(row=0, column=0, sticky=tk.W)
-        self.file_path_var = tk.StringVar()
-        ttk.Entry(file_frame, textvariable=self.file_path_var, state='readonly').grid(
-            row=0, column=1, sticky=(tk.W, tk.E), padx=5
+        self.file_panel = FilePanel(
+            main_frame,
+            support_formats_text=self._get_support_formats_text(),
+            on_browse_file=self.browse_file,
+            on_open_batch_window=self.open_batch_window,
+            on_open_glossary_editor=self.open_glossary_editor,
+            on_toggle_preview=self.toggle_full_text_display,
         )
-        ttk.Button(file_frame, text="浏览...", command=self.browse_file).grid(
-            row=0, column=2, padx=5
-        )
-        ttk.Button(file_frame, text="批量任务...", command=self.open_batch_window).grid(
-            row=0, column=3, padx=5
-        )
-        ttk.Button(file_frame, text="术语表管理", command=self.open_glossary_editor).grid(
-            row=0, column=4, padx=5
-        )
-
-        # 支持的格式提示
-        formats = []
-        if PDF_SUPPORT:
-            formats.append("PDF")
-        if EPUB_SUPPORT:
-            formats.append("EPUB")
-        formats.append("TXT")
-
-        support_label = f"支持格式: {', '.join(formats)}"
-        ttk.Label(file_frame, text=support_label, foreground="gray").grid(
-            row=1, column=0, columnspan=3, sticky=tk.W, pady=(5, 0)
-        )
-
-        # 文件大小和预览控制
-        preview_frame = ttk.Frame(file_frame)
-        preview_frame.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(5, 0))
-
-        self.file_info_var = tk.StringVar(value="")
-        ttk.Label(preview_frame, textvariable=self.file_info_var, foreground="blue").pack(
-            side=tk.LEFT
-        )
-        
-        # 成本估算标签
-        self.cost_var = tk.StringVar(value="")
-        ttk.Label(preview_frame, textvariable=self.cost_var, foreground="green").pack(
-            side=tk.LEFT, padx=(10, 0)
-        )
-
-        self.toggle_preview_btn = ttk.Button(
-            preview_frame,
-            text="显示完整原文",
-            command=self.toggle_full_text_display,
-            state='disabled'
-        )
-        self.toggle_preview_btn.pack(side=tk.RIGHT, padx=5)
+        self.file_path_var = self.file_panel.file_path_var
+        self.file_info_var = self.file_panel.file_info_var
+        self.cost_var = self.file_panel.cost_var
+        self.toggle_preview_btn = self.file_panel.toggle_preview_btn
 
         # 2. API配置区域（重构：双下拉框 + 本地模型管理）
-        api_frame = ttk.LabelFrame(main_frame, text="API配置", padding="10")
-        api_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        api_frame.columnconfigure(1, weight=1)
-
-        # 获取可用API列表
-        available_apis = self.get_all_available_apis()
-        api_names = [name for name, _, _ in available_apis]
-
-        # 翻译API选择
-        ttk.Label(api_frame, text="翻译API:").grid(row=0, column=0, sticky=tk.W)
-        self.translation_api_combo = ttk.Combobox(
-            api_frame,
-            textvariable=self.translation_api_var,
-            values=api_names,
-            state='readonly',
-            width=22
+        self.api_panel = ApiPanel(
+            main_frame,
+            api_names=api_names,
+            translation_api_var=self.translation_api_var,
+            analysis_api_var=self.analysis_api_var,
+            target_language_var=self.target_language_var,
+            config_manager=self.config_manager,
+            on_api_type_change=self.on_api_type_change,
+            on_open_translation_config=lambda: self.open_api_config_for('translation'),
+            on_open_analysis_config=lambda: self.open_api_config_for('analysis'),
+            on_add_local_model=self.open_add_local_model_dialog,
+            on_manage_local_models=self.open_manage_local_models_dialog,
+            on_update_concurrency_label=self.update_concurrency_label,
         )
-        self.translation_api_combo.grid(row=0, column=1, sticky=tk.W, padx=5)
-        self.translation_api_combo.bind('<<ComboboxSelected>>', self.on_api_type_change)
-        ttk.Button(api_frame, text="配置", command=lambda: self.open_api_config_for('translation')).grid(
-            row=0, column=2, padx=5
-        )
-
-        # 解析API选择
-        ttk.Label(api_frame, text="解析API:").grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
-        self.analysis_api_combo = ttk.Combobox(
-            api_frame,
-            textvariable=self.analysis_api_var,
-            values=api_names,
-            state='readonly',
-            width=22
-        )
-        self.analysis_api_combo.grid(row=1, column=1, sticky=tk.W, padx=5, pady=(5, 0))
-        ttk.Button(api_frame, text="配置", command=lambda: self.open_api_config_for('analysis')).grid(
-            row=1, column=2, padx=5, pady=(5, 0)
-        )
-
-        # 本地模型管理按钮
-        model_btn_frame = ttk.Frame(api_frame)
-        model_btn_frame.grid(row=2, column=0, columnspan=3, sticky=tk.W, pady=(8, 0))
-        ttk.Button(model_btn_frame, text="+ 添加本地模型", command=self.open_add_local_model_dialog).pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Button(model_btn_frame, text="管理本地模型", command=self.open_manage_local_models_dialog).pack(side=tk.LEFT)
-
-        # API状态
-        self.api_status_var = tk.StringVar(value="未配置")
-        self.api_status_label = ttk.Label(api_frame, textvariable=self.api_status_var, foreground="orange")
-        self.api_status_label.grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=(5, 0))
-
-        # 目标语言
-        ttk.Label(api_frame, text="目标语言:").grid(row=4, column=0, sticky=tk.W, pady=(5, 0))
-        lang_options = ["中文", "英文", "English", "日语", "韩语", "德语", "法语"]
-        lang_combo = ttk.Combobox(
-            api_frame,
-            textvariable=self.target_language_var,
-            values=lang_options,
-            state='normal',
-            width=22
-        )
-        lang_combo.grid(row=4, column=1, sticky=tk.W, padx=5, pady=(5, 0))
-
-        # 新增：翻译风格
-        ttk.Label(api_frame, text="翻译风格:").grid(row=5, column=0, sticky=tk.W, pady=(5, 0))
-        self.style_var = tk.StringVar(value=self.config_manager.get('translation_style', '通俗小说 (Novel)'))
-        style_options = ["直译 (Literal)", "通俗小说 (Novel)", "学术专业 (Academic)", "武侠/古风 (Wuxia)", "新闻/媒体 (News)"]
-        style_combo = ttk.Combobox(
-            api_frame,
-            textvariable=self.style_var,
-            values=style_options,
-            state='readonly',
-            width=22
-        )
-        style_combo.grid(row=5, column=1, sticky=tk.W, padx=5, pady=(5, 0))
-
-        # 新增：并发设置（速度 vs 质量）
-        ttk.Label(api_frame, text="并发线程:").grid(row=6, column=0, sticky=tk.W, pady=(5, 0))
-        
-        concurrency_frame = ttk.Frame(api_frame)
-        concurrency_frame.grid(row=6, column=1, columnspan=2, sticky=tk.W, pady=(5, 0))
-        
-        self.concurrency_var = tk.IntVar(value=self.config_manager.get('concurrency', 1))
-        self.concurrency_scale = tk.Scale(
-            concurrency_frame, 
-            from_=1, to=10, 
-            orient=tk.HORIZONTAL, 
-            variable=self.concurrency_var,
-            length=140,
-            showvalue=0,
-            command=self.update_concurrency_label
-        )
-        self.concurrency_scale.pack(side=tk.LEFT, padx=(5, 5))
-        
-        self.concurrency_label = ttk.Label(concurrency_frame, text=f"{self.concurrency_var.get()} (高质量模式)")
-        self.concurrency_label.pack(side=tk.LEFT)
-        
-        # 提示信息
-        self.concurrency_hint_var = tk.StringVar(value="")
-        ttk.Label(api_frame, textvariable=self.concurrency_hint_var, foreground="gray", font=('', 8)).grid(row=7, column=0, columnspan=3, sticky=tk.W, pady=(2, 0))
+        self.translation_api_combo = self.api_panel.translation_api_combo
+        self.analysis_api_combo = self.api_panel.analysis_api_combo
+        self.api_status_var = self.api_panel.api_status_var
+        self.api_status_label = self.api_panel.api_status_label
+        self.style_var = self.api_panel.style_var
+        self.concurrency_var = self.api_panel.concurrency_var
+        self.concurrency_scale = self.api_panel.concurrency_scale
+        self.concurrency_label = self.api_panel.concurrency_label
+        self.concurrency_hint_var = self.api_panel.concurrency_hint_var
         self.update_concurrency_label(self.concurrency_var.get())
-
-        ttk.Label(
-            api_frame,
-            text="API配额用尽时将自动切换到本地模型",
-            foreground="gray",
-            font=('', 8)
-        ).grid(row=8, column=0, columnspan=3, sticky=tk.W, pady=(5, 0))
 
         # 兼容旧代码：保留api_type_var映射
         self.api_type_var = self.translation_api_var
@@ -638,81 +363,25 @@ class BookTranslatorGUI:
         self.content_paned.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
         # 左侧目录树 (TOC)
-        self.sidebar_frame = ttk.Frame(self.content_paned, width=200)
-        self.content_paned.add(self.sidebar_frame, minsize=150)
-        
-        ttk.Label(self.sidebar_frame, text="章节目录 (自动识别)").pack(anchor=tk.W, padx=5, pady=5)
-        self.toc_tree = ttk.Treeview(self.sidebar_frame, show="tree", selectmode="browse")
-        self.toc_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        scrollbar_toc = ttk.Scrollbar(self.sidebar_frame, orient=tk.VERTICAL, command=self.toc_tree.yview)
-        scrollbar_toc.pack(side=tk.RIGHT, fill=tk.Y)
-        self.toc_tree.configure(yscrollcommand=scrollbar_toc.set)
-        self.toc_tree.bind("<<TreeviewSelect>>", self.on_toc_click)
+        self.toc_panel = TocPanel(self.content_paned, on_toc_click=self.on_toc_click)
+        self.sidebar_frame = self.toc_panel.frame
+        self.toc_tree = self.toc_panel.toc_tree
 
         # 右侧主要 Notebook
-        self.notebook = ttk.Notebook(self.content_paned)
-        self.content_paned.add(self.notebook, minsize=500)
-
-        # 原文标签页
-        original_frame = ttk.Frame(self.notebook)
-        self.notebook.add(original_frame, text="原文")
-        original_frame.columnconfigure(0, weight=1)
-        original_frame.rowconfigure(0, weight=1)
-
-        self.original_text = scrolledtext.ScrolledText(
-            original_frame, wrap=tk.WORD, height=15
+        self.sync_scroll_var = tk.BooleanVar(value=True)
+        self.content_notebook = ContentNotebook(
+            self.content_paned,
+            sync_scroll_var=self.sync_scroll_var,
+            on_save_comparison_edits=self.save_comparison_edits,
+            on_source_scroll=self._on_source_scroll,
+            on_target_scroll=self._on_target_scroll,
+            on_mousewheel=self._on_mousewheel,
         )
-        self.original_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-
-        # 译文标签页
-        translated_frame = ttk.Frame(self.notebook)
-        self.notebook.add(translated_frame, text="译文")
-        translated_frame.columnconfigure(0, weight=1)
-        translated_frame.rowconfigure(0, weight=1)
-
-        self.translated_text_widget = scrolledtext.ScrolledText(
-            translated_frame, wrap=tk.WORD, height=15
-        )
-        self.translated_text_widget.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-
-        # 双栏对照标签页
-        self.setup_comparison_tab()
-
-        # 失败段落标签页
-        failed_frame = ttk.Frame(self.notebook)
-        self.notebook.add(failed_frame, text="失败段落")
-        failed_frame.columnconfigure(1, weight=1)
-        failed_frame.rowconfigure(1, weight=1)
-        failed_frame.rowconfigure(3, weight=1)
-
-
-        ttk.Label(
-            failed_frame,
-            text="检测到的失败/未完成段落，可重试或手动翻译后替换。",
-            foreground="gray"
-        ).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 5))
-
-        self.failed_listbox = tk.Listbox(failed_frame, height=8)
-        self.failed_listbox.grid(row=1, column=0, sticky=(tk.N, tk.S, tk.W), padx=(0, 10))
-        self.failed_listbox.bind('<<ListboxSelect>>', self.on_failed_select)
-
-        detail_frame = ttk.Frame(failed_frame)
-        detail_frame.grid(row=1, column=1, sticky=(tk.N, tk.S, tk.E, tk.W))
-        detail_frame.columnconfigure(0, weight=1)
-        detail_frame.rowconfigure(1, weight=1)
-        detail_frame.rowconfigure(3, weight=1)
-
-        ttk.Label(detail_frame, text="原文（只读）").grid(row=0, column=0, sticky=tk.W)
-        self.failed_source_text = scrolledtext.ScrolledText(
-            detail_frame, wrap=tk.WORD, height=6, state='disabled'
-        )
-        self.failed_source_text.grid(row=1, column=0, sticky=(tk.N, tk.S, tk.E, tk.W), pady=(0, 5))
-
-        ttk.Label(detail_frame, text="手动翻译").grid(row=2, column=0, sticky=tk.W)
-        self.manual_translation_text = scrolledtext.ScrolledText(
-            detail_frame, wrap=tk.WORD, height=6
-        )
-        self.manual_translation_text.grid(row=3, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+        self.notebook = self.content_notebook.notebook
+        self.original_text = self.content_notebook.original_text
+        self.translated_text_widget = self.content_notebook.translated_text_widget
+        self.comp_source_text = self.content_notebook.comp_source_text
+        self.comp_target_text = self.content_notebook.comp_target_text
 
         if self.retry_api_var.get() not in api_names and api_names:
             preferred_retry = "本地 LM Studio" if "本地 LM Studio" in api_names else self.translation_api_var.get()
@@ -720,181 +389,56 @@ class BookTranslatorGUI:
                 preferred_retry = api_names[0]
             self.retry_api_var.set(preferred_retry)
 
-        retry_api_frame = ttk.Frame(detail_frame)
-        retry_api_frame.grid(row=4, column=0, sticky=tk.W, pady=(5, 0))
-        ttk.Label(retry_api_frame, text="重试API:").pack(side=tk.LEFT)
-        self.retry_api_combo = ttk.Combobox(
-            retry_api_frame,
-            textvariable=self.retry_api_var,
-            values=api_names,
-            state='readonly',
-            width=22
-        )
-        self.retry_api_combo.pack(side=tk.LEFT, padx=5)
-        ttk.Button(retry_api_frame, text="配置", command=lambda: self.open_api_config_for('retry')).pack(side=tk.LEFT)
-
-        button_frame = ttk.Frame(detail_frame)
-        button_frame.grid(row=5, column=0, sticky=tk.E, pady=(5, 0))
-        ttk.Button(button_frame, text="重试翻译", command=self.retry_failed_segment).grid(row=0, column=0, padx=5)
-        ttk.Button(button_frame, text="保存手动翻译", command=self.save_manual_translation).grid(row=0, column=1, padx=5)
-
         self.failed_status_var = tk.StringVar(value="暂无失败段落")
-        ttk.Label(failed_frame, textvariable=self.failed_status_var).grid(
-            row=2, column=0, columnspan=3, sticky=tk.W, pady=(5, 0)
+        self.failed_panel = FailedSegmentsPanel(
+            self.notebook,
+            api_names=api_names,
+            retry_api_var=self.retry_api_var,
+            failed_status_var=self.failed_status_var,
+            on_failed_select=self.on_failed_select,
+            on_open_retry_config=lambda: self.open_api_config_for('retry'),
+            on_retry_translation=self.retry_failed_segment,
+            on_save_manual_translation=self.save_manual_translation,
         )
-
-        # 解析标签页
-        analysis_frame = ttk.Frame(self.notebook)
-        self.notebook.add(analysis_frame, text="解析")
-        analysis_frame.columnconfigure(1, weight=1)
-        analysis_frame.rowconfigure(1, weight=1)
-
-        ttk.Label(
-            analysis_frame,
-            text="对翻译段落进行解析讲解（情节解读、概念解释等）",
-            foreground="gray"
-        ).grid(row=0, column=0, columnspan=3, sticky=tk.W, pady=(0, 5))
-
-        # 左侧：段落列表
-        analysis_list_frame = ttk.Frame(analysis_frame)
-        analysis_list_frame.grid(row=1, column=0, sticky=(tk.N, tk.S, tk.W), padx=(0, 10))
-
-        ttk.Label(analysis_list_frame, text="段落列表").pack(anchor=tk.W)
-        self.analysis_listbox = tk.Listbox(analysis_list_frame, width=30, height=12)
-        self.analysis_listbox.pack(fill=tk.Y, expand=True)
-        self.analysis_listbox.bind('<<ListboxSelect>>', self.on_analysis_segment_select)
-
-        # 右侧：解析内容显示
-        analysis_detail_frame = ttk.Frame(analysis_frame)
-        analysis_detail_frame.grid(row=1, column=1, sticky=(tk.N, tk.S, tk.E, tk.W))
-        analysis_detail_frame.columnconfigure(0, weight=1)
-        analysis_detail_frame.rowconfigure(1, weight=1)
-
-        ttk.Label(analysis_detail_frame, text="解析内容").grid(row=0, column=0, sticky=tk.W)
-        self.analysis_text = scrolledtext.ScrolledText(
-            analysis_detail_frame, wrap=tk.WORD, height=12
-        )
-        self.analysis_text.grid(row=1, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
-
-        # 解析按钮
-        analysis_btn_frame = ttk.Frame(analysis_frame)
-        analysis_btn_frame.grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=(10, 0))
-        ttk.Button(analysis_btn_frame, text="解析选中段落", command=self.analyze_selected_segment).pack(side=tk.LEFT, padx=5)
-        ttk.Button(analysis_btn_frame, text="复制解析", command=self.copy_analysis_content).pack(side=tk.LEFT, padx=5)
+        self.failed_listbox = self.failed_panel.failed_listbox
+        self.failed_source_text = self.failed_panel.failed_source_text
+        self.manual_translation_text = self.failed_panel.manual_translation_text
+        self.retry_api_combo = self.failed_panel.retry_api_combo
 
         self.analysis_status_var = tk.StringVar(value="翻译完成后可进行解析")
-        ttk.Label(analysis_frame, textvariable=self.analysis_status_var, foreground="gray").grid(
-            row=3, column=0, columnspan=2, sticky=tk.W, pady=(5, 0)
+        self.analysis_panel = AnalysisPanel(
+            self.notebook,
+            analysis_status_var=self.analysis_status_var,
+            on_analysis_segment_select=self.on_analysis_segment_select,
+            on_analyze_selected_segment=self.analyze_selected_segment,
+            on_copy_analysis_content=self.copy_analysis_content,
         )
+        self.analysis_listbox = self.analysis_panel.analysis_listbox
+        self.analysis_text = self.analysis_panel.analysis_text
 
         # 4. 进度和控制区域
-        control_frame = ttk.Frame(main_frame)
-        control_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        control_frame.columnconfigure(0, weight=1)
-
-        # 进度条
-        self.progress_var = tk.DoubleVar()
-        self.progress_bar = ttk.Progressbar(
-            control_frame,
-            variable=self.progress_var,
-            maximum=100,
-            mode='determinate'
-        )
-        self.progress_bar.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
-
-        # 进度文本
-        self.progress_text_var = tk.StringVar(value="就绪")
-        ttk.Label(control_frame, textvariable=self.progress_text_var).grid(
-            row=1, column=0, sticky=tk.W
-        )
+        self.progress_panel = ProgressPanel(main_frame)
+        self.progress_var = self.progress_panel.progress_var
+        self.progress_bar = self.progress_panel.progress_bar
+        self.progress_text_var = self.progress_panel.progress_text_var
 
         # 5. 操作按钮区域（分两行）
-        button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=4, column=0, sticky=(tk.W, tk.E))
-
-        # 第一行：翻译相关按钮
-        self.translate_btn = ttk.Button(
-            button_frame, text="开始翻译", command=self.start_translation
+        self.action_bar = ActionBar(
+            main_frame,
+            on_start_translation=self.start_translation,
+            on_stop_translation=self.stop_translation,
+            on_start_batch_analysis=self.start_batch_analysis,
+            on_stop_analysis=self.stop_analysis,
+            on_export_translation=self.export_translation,
+            on_export_bilingual_epub=self.export_bilingual_epub,
+            on_export_audiobook=self.export_audiobook,
+            on_export_analysis=self.export_analysis,
+            on_clear_all=self.clear_all,
         )
-        self.translate_btn.grid(row=0, column=0, padx=5, pady=2)
-
-        self.stop_btn = ttk.Button(
-            button_frame, text="停止", command=self.stop_translation, state='disabled'
-        )
-        self.stop_btn.grid(row=0, column=1, padx=5, pady=2)
-
-        self.analyze_all_btn = ttk.Button(
-            button_frame, text="一键解析全部", command=self.start_batch_analysis
-        )
-        self.analyze_all_btn.grid(row=0, column=2, padx=5, pady=2)
-
-        self.stop_analysis_btn = ttk.Button(
-            button_frame, text="停止解析", command=self.stop_analysis, state='disabled'
-        )
-        self.stop_analysis_btn.grid(row=0, column=3, padx=5, pady=2)
-
-        ttk.Button(
-            button_frame, text="导出译文", command=self.export_translation
-        ).grid(row=0, column=4, padx=5, pady=2)
-
-        ttk.Button(
-            button_frame, text="导出双语书", command=self.export_bilingual_epub
-        ).grid(row=0, column=5, padx=5, pady=2)
-
-        ttk.Button(
-            button_frame, text="导出有声书", command=self.export_audiobook
-        ).grid(row=0, column=6, padx=5, pady=2)
-
-        ttk.Button(
-            button_frame, text="导出解析", command=self.export_analysis
-        ).grid(row=0, column=7, padx=5, pady=2)
-
-        ttk.Button(
-            button_frame, text="清空", command=self.clear_all
-        ).grid(row=0, column=8, padx=5, pady=2)
-
-    def setup_comparison_tab(self):
-        """设置双栏对照标签页"""
-        comp_frame = ttk.Frame(self.notebook)
-        self.notebook.add(comp_frame, text="双栏对照")
-        
-        # 顶部工具栏
-        toolbar = ttk.Frame(comp_frame)
-        toolbar.pack(fill=tk.X, padx=5, pady=5)
-        
-        self.sync_scroll_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(toolbar, text="同步滚动", variable=self.sync_scroll_var).pack(side=tk.LEFT)
-        ttk.Button(toolbar, text="保存右侧修改", command=self.save_comparison_edits).pack(side=tk.LEFT, padx=10)
-        
-        # 分割窗口
-        paned = tk.PanedWindow(comp_frame, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
-        paned.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-        
-        # 左侧原文（只读）
-        left_frame = ttk.LabelFrame(paned, text="原文")
-        paned.add(left_frame, minsize=100)
-        
-        self.comp_source_text = scrolledtext.ScrolledText(left_frame, wrap=tk.WORD, height=15)
-        self.comp_source_text.pack(fill=tk.BOTH, expand=True)
-        self.comp_source_text.config(state='disabled')
-        
-        # 右侧译文（可编辑）
-        right_frame = ttk.LabelFrame(paned, text="译文 (可编辑)")
-        paned.add(right_frame, minsize=100)
-        
-        self.comp_target_text = scrolledtext.ScrolledText(right_frame, wrap=tk.WORD, height=15)
-        self.comp_target_text.pack(fill=tk.BOTH, expand=True)
-        
-        # 绑定滚动事件
-        self.comp_source_text.vbar.config(command=self._on_source_scroll)
-        self.comp_target_text.vbar.config(command=self._on_target_scroll)
-        
-        # 鼠标滚轮绑定 (Windows/Linux)
-        self.comp_source_text.bind("<MouseWheel>", lambda e: self._on_mousewheel(e, self.comp_target_text))
-        self.comp_target_text.bind("<MouseWheel>", lambda e: self._on_mousewheel(e, self.comp_source_text))
-        
-        # 初始分割位置 (50%)
-        # 需要在窗口显示后设置才准确，这里先略过
+        self.translate_btn = self.action_bar.translate_btn
+        self.stop_btn = self.action_bar.stop_btn
+        self.analyze_all_btn = self.action_bar.analyze_all_btn
+        self.stop_analysis_btn = self.action_bar.stop_analysis_btn
 
     def _on_source_scroll(self, *args):
         self.comp_source_text.yview(*args)
@@ -1170,89 +714,34 @@ class BookTranslatorGUI:
 
     def browse_file(self):
         """浏览并选择文件"""
-        filetypes = [("所有支持的文件", "*.txt *.pdf *.epub")]
-        if PDF_SUPPORT:
-            filetypes.append(("PDF文件", "*.pdf"))
-        if EPUB_SUPPORT:
-            filetypes.append(("EPUB文件", "*.epub"))
-        filetypes.append(("文本文件", "*.txt"))
-
         filename = filedialog.askopenfilename(
             title="选择要翻译的书籍",
-            filetypes=filetypes
+            filetypes=self.file_processor.get_file_filter()
         )
 
         if filename:
             self.file_path_var.set(filename)
             self.load_file_content(filename)
-            # 加载新文件时清理旧缓存
-            self.clear_progress_cache()
 
     def load_file_content(self, filepath):
         """加载文件内容"""
         try:
-            content = ""
-            
-            # 使用 FileProcessor 读取文件
-            def update_progress(msg):
-                self.progress_text_var.set(msg)
-                self.root.update()
-
-            content = self.file_processor.read_file(filepath, progress_callback=update_progress)
-
-            if not content:
-                raise ValueError("文件内容为空")
-
-            self.current_text = content
-            self.generate_toc(content)
-            self.text_signature = self.compute_text_signature(self.current_text)
-            self.source_segments = []
-            self.translated_segments = []
-            self.failed_segments = []
-            self.resume_from_index = 0
-            self.original_text.delete('1.0', tk.END)
-            
-            # 统计信息
-            char_count = len(content)
-            word_count = len(content.split())
-
-            # 判断是否为大文件
-            is_large_file = char_count > self.preview_limit
-
-            # 更新显示
-            self.update_text_display()
-
-            # 更新文件信息
-            if is_large_file:
-                self.file_info_var.set(
-                    f"⚠️ 大文件 ({char_count:,} 字符) - 仅显示前 {self.preview_limit:,} 字符"
-                )
-                self.toggle_preview_btn.config(state='normal')
-            else:
-                self.file_info_var.set(f"✓ 已加载完整文件 ({char_count:,} 字符)")
-                self.toggle_preview_btn.config(state='disabled')
-
-            self.progress_text_var.set(f"已加载文件 | 字符数: {char_count:,} | 词数: {word_count:,}")
-
-            # 估算成本
-            model_name = self.api_configs.get(self.get_translation_api_type(), {}).get('model', 'unknown')
-            cost_info = CostEstimator.calculate_cost(model_name, content)
-            self.cost_var.set(f"预估成本: ${cost_info['cost_usd']} (Tokens: {cost_info['total_estimated_tokens']:,})")
-
-            # 如果是 DOCX，初始化处理器
-            if filepath.lower().endswith('.docx'):
-                try:
-                    self.docx_handler = DocxHandler(filepath)
-                    self.file_info_var.set(self.file_info_var.get() + " [DOCX 格式保留已就绪]")
-                except Exception as e:
-                    print(f"DOCX 初始化失败: {e}")
-                    self.docx_handler = None
-            else:
-                self.docx_handler = None
+            content = self._read_content_for_path(filepath)
+            load_info = self.load_content_into_workspace(
+                title=Path(filepath).name,
+                content=content,
+                filepath=filepath,
+                clear_progress_cache=True,
+            )
 
             # 提示信息
-            msg = f"文件加载成功!\n\n字符数: {char_count:,}\n词数: {word_count:,}\n预估 Tokens: {cost_info['total_estimated_tokens']:,}"
-            if is_large_file:
+            msg = (
+                "文件加载成功!\n\n"
+                f"字符数: {load_info['char_count']:,}\n"
+                f"词数: {load_info['word_count']:,}\n"
+                f"预估 Tokens: {load_info['cost_info']['total_estimated_tokens']:,}"
+            )
+            if load_info['is_large_file']:
                 msg += f"\n\n⚠️ 这是一个大文件！\n为了性能，预览窗口仅显示前 {self.preview_limit:,} 字符。\n\n翻译时会使用完整文本。"
             messagebox.showinfo("成功", msg)
 
@@ -1323,7 +812,7 @@ class BookTranslatorGUI:
         """添加文件到批量队列"""
         filenames = filedialog.askopenfilenames(
             title="选择要批量翻译的文件",
-            filetypes=[("支持的文件", "*.txt *.pdf *.epub *.docx *.md")]
+            filetypes=self.file_processor.get_file_filter()
         )
         if filenames:
             for f in filenames:
@@ -1403,27 +892,14 @@ class BookTranslatorGUI:
         """内部清空方法，供批量模式调用"""
         if not skip_ui_confirm and not messagebox.askyesno("确认", "确定要清空所有内容吗?"):
             return
-            
+
         self.file_path_var.set("")
         self.current_text = ""
-        self.translated_text = ""
-        self.source_segments = []
-        self.translated_segments = []
-        self.failed_segments = []
-        self.selected_failed_index = None
-        self.show_full_text = False
         self.original_text.delete('1.0', tk.END)
-        self.translated_text_widget.delete('1.0', tk.END)
-        self.progress_var.set(0)
+        self.reset_translation_state()
+        self.reset_analysis_state()
         self.progress_text_var.set("就绪")
-        self.file_info_var.set("")
-        self.toggle_preview_btn.config(state='disabled', text="显示完整原文")
-        self.refresh_failed_segments_view()
-        self.analysis_segments = []
-        self.analysis_text.delete('1.0', tk.END)
-        self.analysis_listbox.delete(0, tk.END)
-        self.analysis_status_var.set("翻译完成后可进行解析")
-        self.update_comparison_view()
+        self.docx_handler = None
 
     def update_concurrency_label(self, val):
         """更新并发数标签和提示"""
@@ -1442,25 +918,169 @@ class BookTranslatorGUI:
     def update_api_status(self):
         """更新API配置状态"""
         api_type = self.get_current_api_type()
-        config = self.api_configs.get(api_type, {})
-
-        if config.get('api_key'):
-            self.api_status_var.set("已配置 API Key")
+        if self._provider_ready_for_gui(api_type):
+            self.api_status_var.set("已配置并可用")
             self.api_status_label.config(foreground="green")
         else:
-            self.api_status_var.set("未配置 API Key")
+            reason = provider_error_message(
+                api_type,
+                api_configs=self.api_configs,
+                custom_local_models=self.custom_local_models,
+                support_flags=self._provider_support_flags(),
+            )
+            self.api_status_var.set(reason or "未配置")
             self.api_status_label.config(foreground="orange")
 
     def get_current_api_type(self):
         """获取当前选择的API类型"""
-        api_name = self.api_type_var.get()
-        api_map = {
-            "Gemini API": "gemini",
-            "OpenAI API": "openai",
-            "本地 LM Studio": "lm_studio",
-            "自定义API": "custom"
+        return self.get_translation_api_type()
+
+    def _provider_support_flags(self):
+        return {
+            "gemini": GEMINI_SUPPORT,
+            "openai": OPENAI_SUPPORT,
+            "claude": CLAUDE_SUPPORT,
+            "requests": REQUESTS_SUPPORT,
         }
-        return api_map.get(api_name, "gemini")
+
+    def _provider_ready_for_gui(self, api_type):
+        """统一判断 GUI 当前 provider 是否可用。"""
+        return provider_ready(
+            api_type,
+            api_configs=self.api_configs,
+            custom_local_models=self.custom_local_models,
+            support_flags=self._provider_support_flags(),
+        )
+
+    def _ensure_provider_ready_or_prompt(self, api_type):
+        """确保 provider 已就绪，否则提示并引导用户修复配置。"""
+        if self._provider_ready_for_gui(api_type):
+            return True
+
+        reason = provider_error_message(
+            api_type,
+            api_configs=self.api_configs,
+            custom_local_models=self.custom_local_models,
+            support_flags=self._provider_support_flags(),
+        ) or "当前提供商尚未配置完成"
+
+        if reason.startswith("缺少 "):
+            messagebox.showerror("错误", reason)
+            return False
+
+        messagebox.showwarning("警告", reason)
+        if api_type in self.custom_local_models:
+            self.open_edit_local_model_dialog(api_type)
+        else:
+            self.open_api_config(api_type)
+        return False
+
+    def _read_content_for_path(self, filepath):
+        """统一通过 FileProcessor 读取文件内容。"""
+        def update_progress(msg):
+            self.progress_text_var.set(msg)
+            self.root.update()
+
+        return self.file_processor.read_file(filepath, progress_callback=update_progress)
+
+    def _init_docx_handler_if_needed(self, filepath):
+        """按需初始化 DOCX 处理器。"""
+        self.docx_handler = None
+        if not filepath or not str(filepath).lower().endswith('.docx'):
+            return
+
+        try:
+            self.docx_handler = DocxHandler(filepath)
+        except Exception as e:
+            print(f"DOCX 初始化失败: {e}")
+            self.docx_handler = None
+
+    def reset_translation_state(self):
+        """重置翻译运行态，不影响当前原文内容。"""
+        self.translated_text = ""
+        self.source_segments = []
+        self.translated_segments = []
+        self.failed_segments = []
+        self.selected_failed_index = None
+        self.resume_from_index = 0
+        self.lm_studio_fallback_active = False
+        self.consecutive_failures = 0
+        self.paused_due_to_failures = False
+        self.show_full_text = False
+
+        if hasattr(self, 'translated_text_widget'):
+            self.translated_text_widget.delete('1.0', tk.END)
+        if hasattr(self, 'progress_var'):
+            self.progress_var.set(0)
+        if hasattr(self, 'file_info_var'):
+            self.file_info_var.set("")
+        if hasattr(self, 'toggle_preview_btn'):
+            self.toggle_preview_btn.config(state='disabled', text="显示完整原文")
+        if hasattr(self, 'refresh_failed_segments_view'):
+            self.refresh_failed_segments_view()
+        if hasattr(self, 'update_comparison_view'):
+            self.update_comparison_view()
+
+    def reset_analysis_state(self):
+        """重置解析运行态。"""
+        self.analysis_segments = []
+        if hasattr(self, 'analysis_text'):
+            self.analysis_text.delete('1.0', tk.END)
+        if hasattr(self, 'analysis_listbox'):
+            self.analysis_listbox.delete(0, tk.END)
+        if hasattr(self, 'analysis_status_var'):
+            self.analysis_status_var.set("翻译完成后可进行解析")
+
+    def load_content_into_workspace(self, title, content, filepath=None, clear_progress_cache=True):
+        """统一将内容载入工作区。"""
+        if not content:
+            raise ValueError("文件内容为空")
+
+        self.reset_translation_state()
+        self.reset_analysis_state()
+
+        self.file_path_var.set(filepath or title or "")
+        self.current_text = content
+        self.text_signature = self.compute_text_signature(content)
+        self.generate_toc(content)
+        self.update_text_display()
+
+        char_count = len(content)
+        word_count = len(content.split())
+        is_large_file = char_count > self.preview_limit
+        display_name = Path(filepath).name if filepath else (title or "未命名内容")
+
+        if is_large_file:
+            self.file_info_var.set(
+                f"⚠️ {display_name} ({char_count:,} 字符) - 仅显示前 {self.preview_limit:,} 字符"
+            )
+            self.toggle_preview_btn.config(state='normal')
+        else:
+            self.file_info_var.set(f"✓ 已加载 {display_name} ({char_count:,} 字符)")
+            self.toggle_preview_btn.config(state='disabled')
+
+        self.progress_text_var.set(f"已载入内容 | 字符数: {char_count:,} | 词数: {word_count:,}")
+
+        model_name = self.api_configs.get(self.get_translation_api_type(), {}).get('model', 'unknown')
+        cost_info = CostEstimator.calculate_cost(model_name, content)
+        self.cost_var.set(
+            f"预估成本: ${cost_info['cost_usd']} (Tokens: {cost_info['total_estimated_tokens']:,})"
+        )
+
+        self._init_docx_handler_if_needed(filepath)
+        if self.docx_handler:
+            self.file_info_var.set(self.file_info_var.get() + " [DOCX 格式保留已就绪]")
+
+        if clear_progress_cache:
+            self.clear_progress_cache()
+
+        return {
+            "char_count": char_count,
+            "word_count": word_count,
+            "is_large_file": is_large_file,
+            "cost_info": cost_info,
+            "display_name": display_name,
+        }
 
     def get_target_language(self):
         """获取用户设置的目标语言"""
@@ -1531,8 +1151,7 @@ class BookTranslatorGUI:
             return
 
         try:
-            with open(file_path, 'r', encoding='utf-8') as rf:
-                content = rf.read()
+            content = self._read_content_for_path(file_path)
         except Exception as e:
             print(f"读取缓存文件失败: {e}")
             self.clear_progress_cache()
@@ -1544,9 +1163,14 @@ class BookTranslatorGUI:
             self.clear_progress_cache()
             return
 
+        self.load_content_into_workspace(
+            title=Path(file_path).name,
+            content=content,
+            filepath=file_path,
+            clear_progress_cache=False,
+        )
+
         # 恢复状态
-        self.file_path_var.set(file_path)
-        self.current_text = content
         self.text_signature = signature
         self.source_segments = cache.get('source_segments', [])
         self.translated_segments = cache.get('translated_segments', [])
@@ -1558,9 +1182,9 @@ class BookTranslatorGUI:
             self.target_language_var.set(cached_target)
 
         # 更新界面显示
-        self.update_text_display()
         self.translated_text = "\n\n".join(self.translated_segments)
         self.update_translated_text(self.translated_text)
+        self.refresh_failed_segments_view()
 
         total_segments = len(self.source_segments) or 1
         progress = (len(self.translated_segments) / total_segments) * 100
@@ -1574,13 +1198,7 @@ class BookTranslatorGUI:
         if not continue_resume:
             # 放弃恢复，清理缓存并重置状态
             self.clear_progress_cache()
-            self.translated_segments = []
-            self.source_segments = []
-            self.failed_segments = []
-            self.resume_from_index = 0
-            self.translated_text = ""
-            self.translated_text_widget.delete('1.0', tk.END)
-            self.progress_var.set(0)
+            self.reset_translation_state()
             self.progress_text_var.set("就绪")
 
     def open_api_config_for(self, purpose='translation'):
@@ -1882,8 +1500,17 @@ class BookTranslatorGUI:
             api_type = self.get_current_api_type()
         config = self.api_configs[api_type]
 
+        title_map = {
+            'gemini': "Gemini API",
+            'openai': "OpenAI API",
+            'claude': "Claude API",
+            'deepseek': "DeepSeek API",
+            'lm_studio': "本地 LM Studio",
+            'custom': "自定义 API",
+        }
+
         config_window = tk.Toplevel(self.root)
-        config_window.title(f"{self.api_type_var.get()} 配置")
+        config_window.title(f"{title_map.get(api_type, api_type)} 配置")
         config_window.geometry("500x350")
         config_window.transient(self.root)
         config_window.grab_set()
@@ -1935,6 +1562,7 @@ class BookTranslatorGUI:
             'lm_studio': (
                 "连接本地 LM Studio 提供的 OpenAI 兼容接口\n"
                 "默认地址: http://127.0.0.1:1234/v1\n"
+                "API Key 可留空，程序会自动使用占位值\n"
                 "请确保 LM Studio Server 已启动并加载目标模型"
             )
         }
@@ -1950,15 +1578,18 @@ class BookTranslatorGUI:
         # 测试连接按钮
         def test_connection():
             """测试API连接"""
-            test_api_key = api_key_var.get().strip()
-            test_model = model_var.get().strip()
-
-            if not test_api_key:
-                messagebox.showwarning("警告", "请先输入API Key")
-                return
-
-            if not test_model:
-                messagebox.showwarning("警告", "请先输入模型名称")
+            test_config = {
+                'api_key': api_key_var.get().strip(),
+                'model': model_var.get().strip(),
+                'base_url': base_url_var.get().strip(),
+            }
+            ready, reason = validate_builtin_provider(
+                api_type,
+                test_config,
+                support_flags=self._provider_support_flags(),
+            )
+            if not ready:
+                messagebox.showwarning("警告", reason)
                 return
 
             # 显示测试中提示
@@ -1968,20 +1599,12 @@ class BookTranslatorGUI:
             try:
                 # 使用 TranslationEngine 的测试功能
                 test_engine = TranslationEngine()
-                
-                provider_enum = APIProvider.GEMINI
-                if api_type == 'gemini': provider_enum = APIProvider.GEMINI
-                elif api_type == 'openai': provider_enum = APIProvider.OPENAI
-                elif api_type == 'claude': provider_enum = APIProvider.CLAUDE
-                elif api_type == 'deepseek': provider_enum = APIProvider.DEEPSEEK
-                elif api_type == 'lm_studio': provider_enum = APIProvider.LM_STUDIO
-                elif api_type == 'custom': provider_enum = APIProvider.CUSTOM
-                
+
                 test_engine.add_api_config(api_type, APIConfig(
-                    provider=provider_enum,
-                    api_key=test_api_key,
-                    model=test_model,
-                    base_url=base_url_var.get().strip(),
+                    provider=self._builtin_provider_enum(api_type),
+                    api_key=test_config['api_key'],
+                    model=test_config['model'],
+                    base_url=test_config['base_url'],
                     temperature=0.2
                 ))
                 
@@ -2000,23 +1623,25 @@ class BookTranslatorGUI:
 
         # 保存按钮
         def save_config():
-            new_api_key = api_key_var.get().strip()
-            new_model = model_var.get().strip()
-
-            # 验证输入
-            if not new_api_key:
-                messagebox.showwarning("警告", "API Key不能为空")
-                return
-
-            if not new_model:
-                messagebox.showwarning("警告", "模型名称不能为空")
+            new_config = {
+                'api_key': api_key_var.get().strip(),
+                'model': model_var.get().strip(),
+                'base_url': base_url_var.get().strip(),
+            }
+            ready, reason = validate_builtin_provider(
+                api_type,
+                new_config,
+                support_flags=self._provider_support_flags(),
+            )
+            if not ready:
+                messagebox.showwarning("警告", reason)
                 return
 
             # 保存配置
-            self.api_configs[api_type]['api_key'] = new_api_key
-            self.api_configs[api_type]['model'] = new_model
+            self.api_configs[api_type]['api_key'] = new_config['api_key']
+            self.api_configs[api_type]['model'] = new_config['model']
             if api_type in ['openai', 'custom', 'lm_studio', 'deepseek']:
-                self.api_configs[api_type]['base_url'] = base_url_var.get().strip()
+                self.api_configs[api_type]['base_url'] = new_config['base_url']
 
             # 自动保存到文件
             self.save_config(show_message=True)
@@ -2224,9 +1849,18 @@ class BookTranslatorGUI:
 
             self.update_api_status()
             self.refresh_api_dropdowns()
-            configured_count = len([k for k, v in self.api_configs.items() if v.get('api_key')])
-            local_count = len(self.custom_local_models)
-            print(f"✓ 配置已加载: {configured_count} 个API已配置, {local_count} 个自定义本地模型")
+            ready_builtin = [
+                name for name in self.api_configs
+                if self._provider_ready_for_gui(name)
+            ]
+            ready_local = [
+                name for name in self.custom_local_models
+                if self._provider_ready_for_gui(name)
+            ]
+            print(
+                f"✓ 配置已加载: {len(ready_builtin)} 个内置API可用, "
+                f"{len(ready_local)} 个自定义本地模型可用"
+            )
         except Exception as e:
             error_msg = f"加载配置失败: {e}"
             print(error_msg)
@@ -2270,20 +1904,8 @@ class BookTranslatorGUI:
             return
 
         api_type = self.get_translation_api_type()
-
-        # 检查API配置：内置API需要API Key，自定义本地模型需要配置
-        if api_type in self.custom_local_models:
-            config = self.custom_local_models[api_type]
-            if not config.get('base_url') or not config.get('model_id'):
-                messagebox.showwarning("警告", "请先配置本地模型的 Base URL 和 Model ID")
-                self.open_edit_local_model_dialog(api_type)
-                return
-        else:
-            config = self.api_configs.get(api_type, {})
-            if not config.get('api_key'):
-                messagebox.showwarning("警告", "请先配置API Key")
-                self.open_api_config(api_type)
-                return
+        if not self._ensure_provider_ready_or_prompt(api_type):
+            return
 
         # 计算签名用于断点恢复判断
         current_signature = self.compute_text_signature(self.current_text)
@@ -2348,44 +1970,53 @@ class BookTranslatorGUI:
         # 清除旧配置
         self.translation_engine.api_configs.clear()
         self.translation_engine.custom_local_models.clear()
-        
-        # 同步内置API配置
+
+        support_flags = self._provider_support_flags()
+
+        # 同步内置 API 配置
         for name, cfg in self.api_configs.items():
-            if not cfg.get('api_key'):
+            provider_enum = provider_enum_for_name(name)
+            if provider_enum is None:
                 continue
-                
-            provider = APIProvider.GEMINI
-            if name == 'gemini': provider = APIProvider.GEMINI
-            elif name == 'openai': provider = APIProvider.OPENAI
-            elif name == 'claude': provider = APIProvider.CLAUDE
-            elif name == 'deepseek': provider = APIProvider.DEEPSEEK
-            elif name == 'lm_studio': provider = APIProvider.LM_STUDIO
-            elif name == 'custom': provider = APIProvider.CUSTOM
-            
+
+            if not provider_ready(
+                name,
+                api_configs=self.api_configs,
+                support_flags=support_flags,
+            ):
+                continue
+
             self.translation_engine.add_api_config(name, APIConfig(
-                provider=provider,
+                provider=provider_enum,
                 api_key=cfg.get('api_key', ''),
                 model=cfg.get('model', ''),
                 base_url=cfg.get('base_url', ''),
                 temperature=cfg.get('temperature', 0.2)
             ))
-            
+
         # 同步自定义本地模型
         for name, cfg in self.custom_local_models.items():
+            if not provider_ready(
+                name,
+                custom_local_models=self.custom_local_models,
+                support_flags=support_flags,
+            ):
+                continue
+
             self.translation_engine.add_custom_local_model(
                 name=name,
                 display_name=cfg.get('display_name', name),
                 base_url=cfg.get('base_url', ''),
                 model_id=cfg.get('model_id', ''),
-                api_key=cfg.get('api_key', 'lm-studio')
+                api_key=cfg.get('api_key') or 'lm-studio'
             )
-            
+
         # 设置回退逻辑
-        if 'lm_studio' in self.api_configs and self.api_configs['lm_studio'].get('api_key'):
-            self.translation_engine.set_fallback_provider('lm_studio')
-        elif self.custom_local_models:
-            first_local = list(self.custom_local_models.keys())[0]
-            self.translation_engine.set_fallback_provider(first_local)
+        self.translation_engine.fallback_provider = choose_fallback_provider(
+            api_configs=self.api_configs,
+            custom_local_models=self.custom_local_models,
+            support_flags=support_flags,
+        )
 
     def translate_text(self):
         """执行翻译（在后台线程中，支持并发）"""
@@ -2603,16 +2234,6 @@ class BookTranslatorGUI:
         lang = self.detect_language(text)
         if (target_is_chinese and lang == 'zh') or (target_is_english and lang == 'en'):
             return text
-            
-        # 映射 API 类型
-        provider = APIProvider.GEMINI
-        if api_type == 'gemini': provider = APIProvider.GEMINI
-        elif api_type == 'openai': provider = APIProvider.OPENAI
-        elif api_type == 'claude': provider = APIProvider.CLAUDE
-        elif api_type == 'deepseek': provider = APIProvider.DEEPSEEK
-        elif api_type == 'lm_studio': provider = APIProvider.LM_STUDIO
-        elif api_type == 'custom': provider = APIProvider.CUSTOM
-        elif api_type in self.custom_local_models: provider = api_type # 自定义本地模型作为 provider 字符串传递
         
         # 构建风格提示
         style = self.style_var.get()
@@ -2632,7 +2253,7 @@ class BookTranslatorGUI:
         result = self.translation_engine.translate(
             text=text,
             target_lang=target_language,
-            provider=provider if isinstance(provider, str) else provider.value,
+            provider=self._engine_provider_name(api_type),
             use_memory=True,
             use_glossary=True,
             context=context,
@@ -2649,93 +2270,20 @@ class BookTranslatorGUI:
 
     def is_translation_incomplete(self, translated, source, target_language=None):
         """检测译文是否异常或未完成"""
-        target_language = target_language or self.get_target_language()
-        target_is_chinese = self.is_target_language_chinese(target_language)
-        target_is_english = self.is_target_language_english(target_language)
-
-        if not translated or not translated.strip():
-            return True
-
-        normalized = translated.strip()
-        if normalized.startswith("[翻译错误") or normalized.startswith("[未翻译") or normalized.startswith("[待手动翻译"):
-            return True
-
-        # 明显过短或与原文相同视为未完成
-        if len(normalized) < 5:
-            return True
-        if normalized == source.strip():
-            return True
-
-        min_length_ratio = 0.2 if target_is_chinese else 0.15
-        if len(source) > 50 and len(normalized) < len(source) * min_length_ratio:
-            return True
-
-        # 语言/字符占比检查：译文缺少中文或仍以英文/日文为主则视为未完成
-        def count_chars(text, pattern):
-            return len(re.findall(pattern, text))
-
-        chinese_chars = count_chars(normalized, r'[\u4e00-\u9fff]')
-        latin_chars = count_chars(normalized, r'[A-Za-z]')
-        japanese_chars = count_chars(normalized, r'[\u3040-\u30ff\u31f0-\u31ff]')
-        total_chars = len(re.findall(r'\S', normalized)) or 1  # 避免除0
-
-        chinese_ratio = chinese_chars / total_chars
-        latin_ratio = latin_chars / total_chars
-        japanese_ratio = japanese_chars / total_chars
-
-        source_has_latin = bool(re.search(r'[A-Za-z]', source))
-        source_has_japanese = bool(re.search(r'[\u3040-\u30ff\u31f0-\u31ff]', source))
-
-        if target_is_chinese:
-            # 原文是英文/日文，且译文中文比例低，则判定未完成
-            if source_has_latin and chinese_ratio < 0.2:
-                return True
-            if source_has_japanese and chinese_ratio < 0.2:
-                return True
-
-            # 译文整体缺少中文且仍以英文/日文为主
-            if chinese_ratio < 0.15 and (latin_ratio > 0.35 or japanese_ratio > 0.2):
-                return True
-
-            # 明显以英文或日文占主导也视为未完成
-            if latin_ratio > 0.6 or japanese_ratio > 0.3:
-                return True
-        elif target_is_english:
-            # 英文目标时，如果译文仍以中文为主或明显过短则视为未完成
-            if chinese_ratio > 0.3 and chinese_ratio > latin_ratio:
-                return True
-            if latin_ratio < 0.15 and len(source) > 50:
-                return True
-        else:
-            # 其他目标语言：只做基础完整性检查，避免误判
-            if chinese_ratio > 0.6 and target_language:
-                return True
-
-        return False
+        return review_is_translation_incomplete(
+            translated,
+            source,
+            target_language or self.get_target_language(),
+        )
 
     def verify_and_retry_segments(self, api_type):
         """翻译完成后检查并自动重试失败段落"""
-        failed = []
-        target_language = self.get_target_language()
-        for idx, (source, translated) in enumerate(zip(self.source_segments, self.translated_segments)):
-            if self.is_translation_incomplete(translated, source, target_language=target_language):
-                try:
-                    retry_text = self.translate_segment(api_type, source)
-                except Exception as e:
-                    retry_text = f"[翻译错误: {str(e)}]\n{source}"
-
-                if not self.is_translation_incomplete(retry_text, source, target_language=target_language):
-                    self.translated_segments[idx] = retry_text
-                else:
-                    placeholder = f"[待手动翻译 - 段 {idx + 1}]"
-                    self.translated_segments[idx] = placeholder
-                    failed.append({
-                        'index': idx,
-                        'source': source,
-                        'last_error': translated
-                    })
-
-        self.failed_segments = failed
+        self.translated_segments, self.failed_segments = review_verify_and_retry_segments(
+            self.source_segments,
+            self.translated_segments,
+            lambda source, idx: self.translate_segment(api_type, source),
+            self.get_target_language(),
+        )
         self.save_progress_cache()
 
     def refresh_failed_segments_view(self):
@@ -2792,29 +2340,8 @@ class BookTranslatorGUI:
 
         info = self.failed_segments[self.selected_failed_index]
         api_type = self.get_retry_api_type()
-
-        if api_type in self.custom_local_models:
-            config = self.custom_local_models[api_type]
-            if not config.get('base_url') or not config.get('model_id'):
-                messagebox.showwarning("警告", "请先配置本地模型的 Base URL 和 Model ID")
-                self.open_edit_local_model_dialog(api_type)
-                return
-            if not OPENAI_SUPPORT:
-                messagebox.showerror("错误", "缺少 openai 库，无法调用本地模型")
-                return
-        else:
-            config = self.api_configs.get(api_type, {})
-            if api_type == 'custom' and not config.get('base_url'):
-                messagebox.showwarning("警告", "请先配置自定义API的 Base URL")
-                self.open_api_config(api_type)
-                return
-            if api_type in ['gemini', 'openai', 'custom', 'lm_studio'] and not config.get('api_key'):
-                messagebox.showwarning("警告", "请先配置API Key")
-                self.open_api_config(api_type)
-                return
-            if api_type == 'lm_studio' and not OPENAI_SUPPORT:
-                messagebox.showerror("错误", "缺少 openai 库，无法调用本地LM Studio")
-                return
+        if not self._ensure_provider_ready_or_prompt(api_type):
+            return
 
         try:
             retry_text = self.translate_segment(api_type, info['source'])
@@ -2840,16 +2367,18 @@ class BookTranslatorGUI:
             return
 
         manual_text = self.manual_translation_text.get('1.0', tk.END).strip()
-        if not manual_text:
-            messagebox.showwarning("警告", "手动翻译内容不能为空")
+        try:
+            self.translated_segments, self.failed_segments, info = apply_manual_translation_review(
+                self.translated_segments,
+                self.failed_segments,
+                self.selected_failed_index,
+                manual_text,
+            )
+        except ValueError as exc:
+            messagebox.showwarning("警告", str(exc))
             return
 
-        info = self.failed_segments[self.selected_failed_index]
         source_text = info['source']
-        
-        # 1. 更新运行时数据
-        self.translated_segments[info['index']] = manual_text
-        self.failed_segments.pop(self.selected_failed_index)
         
         # 2. 保存到翻译记忆库 (Linkage 1)
         try:
@@ -3365,7 +2894,7 @@ class BookTranslatorGUI:
         config = self.custom_local_models[model_key]
 
         client = openai.OpenAI(
-            api_key=config.get('api_key', 'lm-studio'),
+            api_key=config.get('api_key') or 'lm-studio',
             base_url=config['base_url']
         )
 
@@ -3469,7 +2998,7 @@ class BookTranslatorGUI:
         config = self.api_configs.get('lm_studio', DEFAULT_LM_STUDIO_CONFIG)
 
         client = openai.OpenAI(
-            api_key=config.get('api_key', 'lm-studio'),
+            api_key=config.get('api_key') or 'lm-studio',
             base_url=config.get('base_url', 'http://127.0.0.1:1234/v1')
         )
 
@@ -3646,78 +3175,49 @@ class BookTranslatorGUI:
     # --- 在线搜索相关方法 ---
     def setup_search_tab(self):
         """设置在线书城：包含 '全网搜索' 和 '社区图书馆' 两个子标签"""
-        
-        # 创建子 Notebook
-        self.library_notebook = ttk.Notebook(self.library_frame)
-        self.library_notebook.pack(fill=tk.BOTH, expand=True)
-        
-        # 1. 全网搜索 Tab (原有的功能)
-        search_tab_frame = ttk.Frame(self.library_notebook)
-        self.library_notebook.add(search_tab_frame, text="全网搜索 (Z-Lib/Anna)")
-        
-        self._build_global_search_ui(search_tab_frame)
-        
-        # 2. 社区图书馆 Tab (新功能)
-        community_tab_frame = ttk.Frame(self.library_notebook)
-        self.library_notebook.add(community_tab_frame, text="社区图书馆 (Community Library)")
-        
-        self._build_community_ui(community_tab_frame)
+        self.library_panel = LibraryPanel(
+            self.library_frame,
+            on_sidebar_search_click=self.on_sidebar_search_click,
+            on_search_click=self.on_search_click,
+            on_ai_search_click=self.on_ai_search_click,
+            on_open_online_config=self.open_online_config,
+            on_search_result_select=self.on_search_result_select,
+            on_prev_page=self.on_prev_page,
+            on_next_page=self.on_next_page,
+            on_page_slider_release=self.on_page_slider_release,
+            on_auto_categorize_click=self.on_auto_categorize_click,
+            on_download_click=self.on_download_click,
+            on_refresh_community_list=self.refresh_community_list,
+            on_open_community_upload=self.open_community_upload,
+            on_open_admin_audit=self.open_admin_audit,
+            on_download_community_book=self.download_community_book,
+            on_copy_community_link=self.copy_community_link,
+        )
 
-    def _build_community_ui(self, parent):
-        """构建社区图书馆 UI"""
-        # 工具栏
-        toolbar = ttk.Frame(parent, padding=10)
-        toolbar.pack(fill=tk.X)
-        
-        ttk.Label(toolbar, text="📚 社区共享书籍", font=("", 12, "bold")).pack(side=tk.LEFT, padx=5)
-        
-        self.comm_status_var = tk.StringVar(value="就绪")
-        ttk.Label(toolbar, textvariable=self.comm_status_var, foreground="gray").pack(side=tk.LEFT, padx=10)
-        
-        # 按钮组
-        btn_frame = ttk.Frame(toolbar)
-        btn_frame.pack(side=tk.RIGHT)
-        
-        ttk.Button(btn_frame, text="刷新列表", command=self.refresh_community_list).pack(side=tk.LEFT, padx=5)
-        ttk.Button(btn_frame, text="📤 上传分享", command=self.open_community_upload).pack(side=tk.LEFT, padx=5)
-        
-        # 管理员入口
-        self.admin_btn = ttk.Button(btn_frame, text="🛡️ 图书馆管理", command=self.open_admin_audit)
-        self.admin_btn.pack(side=tk.LEFT, padx=5)
-        
-        # 列表区域
-        columns = ("title", "author", "description", "uploader", "size", "date")
-        self.comm_tree = ttk.Treeview(parent, columns=columns, show="headings")
-        
-        self.comm_tree.heading("title", text="标题")
-        self.comm_tree.heading("author", text="作者")
-        self.comm_tree.heading("description", text="简介")
-        self.comm_tree.heading("uploader", text="上传者")
-        self.comm_tree.heading("size", text="大小")
-        self.comm_tree.heading("date", text="日期")
-        
-        self.comm_tree.column("title", width=200)
-        self.comm_tree.column("author", width=100)
-        self.comm_tree.column("description", width=300)
-        self.comm_tree.column("uploader", width=80)
-        self.comm_tree.column("size", width=80)
-        self.comm_tree.column("date", width=100)
-        
-        scrollbar = ttk.Scrollbar(parent, orient=tk.VERTICAL, command=self.comm_tree.yview)
-        self.comm_tree.configure(yscrollcommand=scrollbar.set)
-        
-        self.comm_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y, pady=5)
-        
-        # 右键菜单
-        self.comm_menu = tk.Menu(parent, tearoff=0)
-        self.comm_menu.add_command(label="下载并导入", command=self.download_community_book)
-        self.comm_menu.add_command(label="复制链接", command=self.copy_community_link)
-        
-        self.comm_tree.bind("<Button-3>", lambda e: self.comm_menu.post(e.x_root, e.y_root))
-        self.comm_tree.bind("<Double-1>", lambda e: self.download_community_book())
-        
-        # 初始加载
+        self.library_notebook = self.library_panel.library_notebook
+        self.comm_status_var = self.library_panel.comm_status_var
+        self.comm_tree = self.library_panel.comm_tree
+        self.comm_menu = self.library_panel.comm_menu
+        self.admin_btn = self.library_panel.admin_btn
+        self.cat_tree = self.library_panel.cat_tree
+        self.lang_vars = self.library_panel.lang_vars
+        self.search_frame = self.library_panel.search_frame
+        self.search_query_var = self.library_panel.search_query_var
+        self.search_entry = self.library_panel.search_entry
+        self.search_source_var = self.library_panel.search_source_var
+        self.search_tree = self.library_panel.search_tree
+        self.prev_btn = self.library_panel.prev_btn
+        self.page_label_var = self.library_panel.page_label_var
+        self.page_slider = self.library_panel.page_slider
+        self.next_btn = self.library_panel.next_btn
+        self.search_detail_var = self.library_panel.search_detail_var
+        self.download_btn = self.library_panel.download_btn
+        self.search_status_var = self.library_panel.search_status_var
+
+        self.current_search_results = []
+        self.selected_result = None
+        self.current_page = 1
+
         self.refresh_community_list()
 
     def refresh_community_list(self):
@@ -3851,7 +3351,7 @@ class BookTranslatorGUI:
                     )
                     # 3. 调用当前选中的文本生成 API
                     api_type = self.get_analysis_api_type()
-                    if api_type not in self.custom_local_models and not self.api_configs.get(api_type, {}).get('api_key'):
+                    if not self._provider_ready_for_gui(api_type):
                         api_type = self.get_translation_api_type()
 
                     strict_json_prompt = (
@@ -3999,162 +3499,6 @@ class BookTranslatorGUI:
 
         ttk.Button(btn_frame, text="🗑️ 删除选中条目", command=delete_entry).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="刷新", command=refresh).pack(side=tk.RIGHT, padx=5)
-
-    def _build_global_search_ui(self, search_frame):
-        """原有的全网搜索UI构建逻辑 (重构自 setup_search_tab)"""
-        # 使用 PanedWindow 分割左右区域
-        paned = tk.PanedWindow(search_frame, orient=tk.HORIZONTAL, sashrelief=tk.RAISED)
-        paned.pack(fill=tk.BOTH, expand=True)
-
-        # === 左侧：多因素筛选 ===
-        sidebar_frame = ttk.Frame(paned, width=220)
-        paned.add(sidebar_frame, minsize=180)
-        
-        # 1. 分类选择 (多选)
-        cat_labelframe = ttk.LabelFrame(sidebar_frame, text="1. 分类 (按Ctrl多选)", padding="5")
-        cat_labelframe.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
-        
-        self.cat_tree = ttk.Treeview(cat_labelframe, show="tree", selectmode="extended", height=10)
-        self.cat_tree.pack(fill=tk.BOTH, expand=True)
-        
-        categories = {
-            "文学 (Fiction)": ["科幻 (Sci-Fi)", "奇幻 (Fantasy)", "悬疑 (Mystery)", "惊悚 (Thriller)", "浪漫 (Romance)", "经典 (Classics)"],
-            "非虚构 (Non-Fiction)": ["历史 (History)", "传记 (Biography)", "哲学 (Philosophy)", "心理学 (Psychology)", "商业 (Business)"],
-            "科技 (Tech)": ["计算机 (Computer Science)", "编程 (Programming)", "AI (Artificial Intelligence)", "物理 (Physics)", "数学 (Math)"],
-            "生活 (Lifestyle)": ["烹饪 (Cooking)", "健康 (Health)", "旅游 (Travel)", "艺术 (Art)"],
-            "漫画 (Comics)": ["Manga", "Graphic Novels"]
-        }
-        
-        for main_cat, sub_cats in categories.items():
-            parent = self.cat_tree.insert("", "end", text=main_cat, open=True)
-            for sub in sub_cats:
-                self.cat_tree.insert(parent, "end", text=sub)
-
-        # 2. 语言选择 (多选)
-        lang_labelframe = ttk.LabelFrame(sidebar_frame, text="2. 语言 (多选)", padding="5")
-        lang_labelframe.pack(fill=tk.X, padx=2, pady=2)
-        
-        self.lang_vars = {}
-        # 使用标准代码: zh, en, ja, ko, fr, de
-        languages = [("中文", "zh"), ("英语", "en"), ("日语", "ja"), 
-                     ("韩语", "ko"), ("法语", "fr"), ("德语", "de")]
-        
-        for i, (lbl, val) in enumerate(languages):
-            var = tk.BooleanVar()
-            self.lang_vars[val] = var
-            cb = ttk.Checkbutton(lang_labelframe, text=lbl, variable=var)
-            cb.grid(row=i//2, column=i%2, sticky="w", padx=2)
-
-        # 3. 搜索按钮
-        btn_frame = ttk.Frame(sidebar_frame, padding="5")
-        btn_frame.pack(fill=tk.X, pady=5)
-        
-        ttk.Button(btn_frame, text="🔍 应用筛选并搜索", command=self.on_sidebar_search_click).pack(fill=tk.X)
-        ttk.Label(btn_frame, text="提示: 结合顶部关键词更精准", font=("", 8), foreground="gray").pack(pady=(5,0))
-
-        # === 右侧：搜索与结果 ===
-        right_frame = ttk.Frame(paned, padding="10")
-        paned.add(right_frame, minsize=600)
-        
-        self.search_frame = right_frame
-
-        # 顶部搜索栏
-        top_frame = ttk.Frame(right_frame)
-        top_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        ttk.Label(top_frame, text="附加关键词:").pack(side=tk.LEFT, padx=(0, 5))
-        self.search_query_var = tk.StringVar()
-        self.search_entry = ttk.Entry(top_frame, textvariable=self.search_query_var, width=30)
-        self.search_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
-        self.search_entry.bind('<Return>', lambda e: self.on_search_click())
-        
-        self.search_source_var = tk.StringVar(value="Anna's Archive")
-        source_combo = ttk.Combobox(
-            top_frame, 
-            textvariable=self.search_source_var,
-            values=["Anna's Archive", "Z-Library"],
-            state="readonly",
-            width=15
-        )
-        source_combo.pack(side=tk.LEFT, padx=5)
-        
-        ttk.Button(top_frame, text="普通搜索", command=self.on_search_click).pack(side=tk.LEFT, padx=5)
-        ttk.Button(top_frame, text="🤖 AI 寻书", command=self.on_ai_search_click).pack(side=tk.LEFT, padx=5)
-        ttk.Button(top_frame, text="配置账号", command=self.open_online_config).pack(side=tk.LEFT, padx=5)
-        
-        # 中间结果列表
-        list_frame = ttk.Frame(self.search_frame)
-        list_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # 使用 Treeview 展示结果
-        columns = ("title", "author", "language", "ext", "size", "source", "category")
-        self.search_tree = ttk.Treeview(list_frame, columns=columns, show="headings", height=10)
-        
-        self.search_tree.heading("title", text="标题")
-        self.search_tree.heading("author", text="作者")
-        self.search_tree.heading("language", text="语言")
-        self.search_tree.heading("ext", text="格式")
-        self.search_tree.heading("size", text="大小")
-        self.search_tree.heading("source", text="来源")
-        self.search_tree.heading("category", text="AI分类")
-        
-        self.search_tree.column("title", width=300)
-        self.search_tree.column("author", width=120)
-        self.search_tree.column("language", width=50, anchor="center")
-        self.search_tree.column("ext", width=50, anchor="center")
-        self.search_tree.column("size", width=70, anchor="e")
-        self.search_tree.column("source", width=90, anchor="center")
-        self.search_tree.column("category", width=100, anchor="center")
-        
-        self.search_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.search_tree.bind('<<TreeviewSelect>>', self.on_search_result_select)
-        
-        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=self.search_tree.yview)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.search_tree.config(yscrollcommand=scrollbar.set)
-        
-        # 分页控件
-        pagination_frame = ttk.Frame(right_frame)
-        pagination_frame.pack(fill=tk.X, pady=(5, 0))
-        
-        self.prev_btn = ttk.Button(pagination_frame, text="< 上一页", command=self.on_prev_page, state='disabled')
-        self.prev_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.page_label_var = tk.StringVar(value="第 1 页")
-        ttk.Label(pagination_frame, textvariable=self.page_label_var, width=8).pack(side=tk.LEFT, padx=5)
-        
-        # 滑块快速跳转
-        self.page_slider = tk.Scale(pagination_frame, from_=1, to=50, orient=tk.HORIZONTAL, length=200, showvalue=0)
-        self.page_slider.set(1)
-        self.page_slider.pack(side=tk.LEFT, padx=5)
-        self.page_slider.bind("<ButtonRelease-1>", self.on_page_slider_release)
-        # 拖动时实时更新标签
-        self.page_slider.bind("<Motion>", lambda e: self.page_label_var.set(f"第 {self.page_slider.get()} 页"))
-        
-        self.next_btn = ttk.Button(pagination_frame, text="下一页 >", command=self.on_next_page, state='disabled')
-        self.next_btn.pack(side=tk.LEFT, padx=5)
-        
-        # 底部详情与下载
-        bottom_frame = ttk.LabelFrame(self.search_frame, text="结果详情", padding="10")
-        bottom_frame.pack(fill=tk.X, pady=(10, 0))
-        
-        self.search_detail_var = tk.StringVar(value="请从左侧选择筛选条件或直接搜索")
-        ttk.Label(bottom_frame, textvariable=self.search_detail_var, wraplength=800, justify=tk.LEFT).pack(fill=tk.X, pady=(0, 10))
-        
-        btn_frame = ttk.Frame(bottom_frame)
-        btn_frame.pack(side=tk.RIGHT)
-
-        ttk.Button(btn_frame, text="🏷️ 获取网站分类", command=self.on_auto_categorize_click).pack(side=tk.LEFT, padx=5)
-        self.download_btn = ttk.Button(btn_frame, text="下载并导入翻译", command=self.on_download_click, state="disabled")
-        self.download_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.search_status_var = tk.StringVar(value="就绪")
-        ttk.Label(self.search_frame, textvariable=self.search_status_var, foreground="gray").pack(side=tk.LEFT, pady=(5, 0))
-
-        # 搜索结果缓存
-        self.current_search_results = []
-        self.selected_result = None
-        self.current_page = 1
 
     def on_prev_page(self):
         if self.current_page > 1:
@@ -4347,8 +3691,15 @@ class BookTranslatorGUI:
         # 重新插入
         for i, (cat, cat_books) in enumerate(categories.items()):
             cat_id = f"group_{i}"
+            group_source = cat_books[0].get('source', '') if cat_books else ''
             # 文件夹节点
-            self.search_tree.insert("", tk.END, iid=cat_id, values=("📂 " + cat, "", "", "", "", res.get('source', ''), "分类"), open=True)
+            self.search_tree.insert(
+                "",
+                tk.END,
+                iid=cat_id,
+                values=("📂 " + cat, "", "", "", "", group_source, "分类"),
+                open=True
+            )
             
             for j, res in enumerate(cat_books):
                 # 书籍节点
@@ -4828,20 +4179,14 @@ class BookTranslatorGUI:
 
     def _load_imported_content(self, title, content):
         """Helper to load content into the editor"""
-        self.file_path_var.set(title)
-        self.current_text = content
-        self.generate_toc(content)
-        self.text_signature = self.compute_text_signature(content)
-        self.source_segments = []
-        self.translated_segments = []
-        self.failed_segments = []
-        self.resume_from_index = 0
-        
-        self.original_text.delete('1.0', tk.END)
-        self.update_text_display()
+        self.load_content_into_workspace(
+            title=title,
+            content=content,
+            filepath=None,
+            clear_progress_cache=True,
+        )
         self.file_info_var.set(f"已加载: {title[:20]}... ({len(content)} 字符)")
         self.progress_text_var.set("导入成功")
-        self.clear_progress_cache()
 
     def generate_glossary_action(self):
         """智能提取术语"""

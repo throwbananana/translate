@@ -9,9 +9,10 @@
 ## 建议流程
 
 1. 新建功能分支
-2. 运行 `py -m pytest -m "not integration and not gui"`
+2. 至少运行 `py -m pytest -q`
 3. 如修改了手工脚本，确认 `run_manual_tests.bat` 对应入口可执行
 4. 提交前检查文档是否需要同步更新
+5. 不要把 `coverage.xml`、`pytest.log`、运行时日志或本地缓存一起提交
 
 ## 提交说明
 

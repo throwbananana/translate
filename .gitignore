@@ -7,7 +7,11 @@ Thumbs.db
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.ruff_cache/
 .coverage
+coverage.xml
+pytest.log
+test-results/
 htmlcov/
 .venv/
 venv/
@@ -22,6 +26,8 @@ chrome_profile/
 # Logs
 *.log
 npm-debug.log*
+translator.log
+translator_error.log
 
 # Build artifacts
 build/
@@ -53,3 +59,4 @@ tmp/
 _bundle_extract/
 *.bak
 *.tmp
+*.cache
