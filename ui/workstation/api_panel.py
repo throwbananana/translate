@@ -12,6 +12,7 @@ class ApiPanel:
     STYLE_OPTIONS = [
         "直译 (Literal)",
         "通俗小说 (Novel)",
+        "日式轻小说 (Light Novel)",
         "学术专业 (Academic)",
         "武侠/古风 (Wuxia)",
         "新闻/媒体 (News)",

@@ -1808,6 +1808,7 @@ class BookTranslatorGUI:
             self.config_manager.set('api_configs', deepcopy(self.api_configs), save=False)
             self.config_manager.set('custom_local_models', deepcopy(self.custom_local_models), save=False)
             self.config_manager.set('target_language', self.get_target_language(), save=False)
+            self.config_manager.set('translation_style', self.style_var.get(), save=False)
             self.config_manager.set('selected_translation_api', self.translation_api_var.get(), save=False)
             self.config_manager.set('selected_analysis_api', self.analysis_api_var.get(), save=False)
             self.config_manager.set('selected_retry_api', self.retry_api_var.get(), save=False)
@@ -2240,6 +2241,7 @@ class BookTranslatorGUI:
         style_prompt_map = {
             "直译 (Literal)": "请进行精准直译，严格保留原文的句子结构和语气，不要过度意译。",
             "通俗小说 (Novel)": "请采用通俗小说的笔法，用词生动、流畅，注重情节的连贯性和人物语气的自然，符合目标语言读者的阅读习惯。",
+            "日式轻小说 (Light Novel)": "请采用日式轻小说译法，语气轻快自然，保留角色台词的个性、吐槽感、心理独白和章节节奏；专有名词、人名、称呼、拟声词与口癖应前后一致，避免过度文言化或学术化。",
             "学术专业 (Academic)": "请采用学术风格，用词严谨、专业，句式规范，确保术语准确，适合学术研究或专业人士阅读。",
             "武侠/古风 (Wuxia)": "请采用中国古典武侠或古风小说的笔触，用词典雅、古朴，半文半白，注重意境的渲染。",
             "新闻/媒体 (News)": "请采用新闻报道的风格，客观、简练、信息传达准确，符合新闻媒体的规范。"
