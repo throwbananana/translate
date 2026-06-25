@@ -55,6 +55,20 @@ class ClaudeProvider:
                 messages=[{"role": "user", "content": request.text}],
                 timeout=timeout,
             )
+        except TypeError as exc:
+            if "timeout" not in str(exc).lower():
+                raise
+            try:
+                message = client.messages.create(
+                    model=model_name,
+                    max_tokens=request.max_tokens,
+                    system=system_prompt,
+                    messages=[{"role": "user", "content": request.text}],
+                )
+            except Exception as retry_exc:
+                if self._is_timeout_error(retry_exc):
+                    raise ProviderTimeoutError(f"provider request timed out after {timeout:.1f}s") from retry_exc
+                raise
         except Exception as exc:
             if self._is_timeout_error(exc):
                 raise ProviderTimeoutError(f"provider request timed out after {timeout:.1f}s") from exc
