@@ -28,9 +28,12 @@
 - [x] Add unit tests for provider timeout coercion, adapter calls, factory defaults, Gemini/Claude timeout mapping, engine bridge behavior and TranslationEngine bridge integration.
 - [x] Add upgrade roadmap documentation.
 - [x] Add persistent upgrade/progress tracker at `docs/upgrade-progress.md`.
+- [x] Reduce detect-secrets false positives by replacing static fake credential values in tests.
+- [x] Remove tracked patch mbox artifacts that could trigger secret scans.
 
 ## Next implementation steps
 
+- [ ] Confirm latest CI secrets job after cleanup changes.
 - [ ] Wire `start_guarded_translation_run(...)` into `BookTranslatorGUI.start_translation()`.
 - [ ] Pass the config snapshot into `translate_text()` and `translate_segment()`.
 - [ ] Stop reading Tk variables from background worker code.
