@@ -23,6 +23,7 @@
 - [x] Add factory helpers to convert existing APIConfig/custom-local-model settings into OpenAI-compatible adapters.
 - [x] Add engine bridge helpers that preserve the current `(translated_text, model)` return shape while delegating to adapters.
 - [x] Replace `translation_engine.py` OpenAI / DeepSeek / LM Studio / custom-local non-streaming methods with calls to the engine bridge.
+- [x] Route Gemini and Claude `translation_engine.py` methods through their provider adapters.
 - [x] Add `timeout_seconds` to APIConfig, API config serialization and config loading.
 - [x] Add unit tests for provider timeout coercion, adapter calls, factory defaults, Gemini/Claude timeout mapping, engine bridge behavior and TranslationEngine bridge integration.
 - [x] Add upgrade roadmap documentation.
@@ -36,4 +37,4 @@
 - [ ] Use `guarded_gui_update(...)` or `should_apply_gui_update(...)` before every worker UI write-back.
 - [ ] Adopt `BatchController` in GUI batch queue loading/saving and `process_next_batch_file()`.
 - [ ] Make `load_file_content(..., silent=True)` the default for batch processing.
-- [ ] Route Gemini and Claude `translation_engine.py` methods through their provider adapters.
+- [ ] Evaluate whether `_stream_openai_compatible(...)` should be adapted or kept as direct SDK logic for now.
