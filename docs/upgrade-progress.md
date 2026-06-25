@@ -9,7 +9,7 @@
 - Pull request: `#2` — `Refactor: add stability phase controller groundwork`
 - Base branch: `main`
 - Last recorded progress date: `2026-06-25`
-- Current head: `5a2095245f75962eeca1af8b57139e3772dcc39d`
+- Current head: `eccb877bb89cfae370d18297ea2e8747ba846701`
 - Test status: CI tests and lint passed on the latest inspected pre-cleanup head. The repository scan job still failed before runtime config cleanup. A new CI run for the current head still needs confirmation.
 - Merge guidance: use **Squash merge** because this branch contains many process commits.
 
