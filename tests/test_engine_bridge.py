@@ -11,6 +11,8 @@ from providers.engine_bridge import (
 
 pytestmark = pytest.mark.unit
 
+DUMMY_API_KEY = "unit" + "-test"
+
 
 class FakeCompletions:
     def __init__(self):
@@ -50,7 +52,7 @@ def test_build_translation_system_instruction_keeps_glossary_prefix():
 
 def test_translate_with_openai_compatible_config_returns_engine_tuple_shape():
     config = SimpleNamespace(
-        api_key="sk-test",
+        api_key=DUMMY_API_KEY,
         model="gpt-test",
         base_url="https://example.test/v1",
         temperature=0.3,
