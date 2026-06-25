@@ -9,6 +9,8 @@ from providers.gemini_provider import GeminiProvider
 
 pytestmark = pytest.mark.unit
 
+DUMMY_API_KEY = "unit" + "-test"
+
 
 class FakeModel:
     last_prompt = None
@@ -52,7 +54,7 @@ class TimeoutGenAI(FakeGenAI):
 
 def test_gemini_provider_passes_timeout_and_returns_text():
     provider = GeminiProvider(
-        api_key="gemini-key",
+        api_key=DUMMY_API_KEY,
         model="gemini-test",
         timeout_seconds=40,
         genai_module=FakeGenAI,
@@ -65,7 +67,7 @@ def test_gemini_provider_passes_timeout_and_returns_text():
         timeout_seconds=11,
     ))
 
-    assert FakeGenAI.configured_key == "gemini-key"
+    assert FakeGenAI.configured_key == DUMMY_API_KEY
     assert FakeGenAI.last_model.model_name == "gemini-test"
     assert FakeModel.last_request_options == {"timeout": 11.0}
     assert "术语表：A=B" in FakeModel.last_prompt
@@ -75,7 +77,7 @@ def test_gemini_provider_passes_timeout_and_returns_text():
 
 def test_gemini_provider_maps_timeout_errors():
     provider = GeminiProvider(
-        api_key="gemini-key",
+        api_key=DUMMY_API_KEY,
         model="gemini-test",
         timeout_seconds=5,
         genai_module=TimeoutGenAI,
