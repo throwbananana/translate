@@ -26,6 +26,7 @@ from provider_utils import (
     list_ready_custom_local_models,
     provider_ready,
 )
+from providers import ClaudeProvider, GeminiProvider, ProviderRequest
 from providers.engine_bridge import (
     translate_with_custom_local_config,
     translate_with_openai_compatible_config,
@@ -438,6 +439,19 @@ class TranslationEngine:
             return f"{glossary_prompt}{base_prompt}\n\n{text}"
         return f"{base_prompt}\n\n{text}"
 
+    def _provider_request(self, config: APIConfig, text: str,
+                          target_lang: str, glossary_prompt: str = "") -> ProviderRequest:
+        """Build a provider-adapter request from an APIConfig."""
+        return ProviderRequest(
+            text=text,
+            target_lang=target_lang,
+            system_instruction=glossary_prompt,
+            model=config.model,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+            timeout_seconds=config.timeout_seconds,
+        )
+
     def _translate_with_gemini(self, text: str, target_lang: str,
                                glossary_prompt: str = "") -> tuple:
         """使用 Gemini API 翻译"""
@@ -448,13 +462,13 @@ class TranslationEngine:
         if not config:
             raise ValueError("未配置 Gemini API")
 
-        genai.configure(api_key=config.api_key)
-        model = genai.GenerativeModel(config.model)
-
-        prompt = self._build_prompt(text, target_lang, glossary_prompt)
-        response = model.generate_content(prompt)
-
-        return response.text, config.model
+        provider = GeminiProvider(
+            api_key=config.api_key,
+            model=config.model,
+            timeout_seconds=config.timeout_seconds,
+        )
+        response = provider.translate(self._provider_request(config, text, target_lang, glossary_prompt))
+        return response.text, response.model
 
     def _translate_with_openai(self, text: str, target_lang: str,
                                glossary_prompt: str = "") -> tuple:
@@ -484,22 +498,13 @@ class TranslationEngine:
         if not config:
             raise ValueError("未配置 Claude API")
 
-        client = anthropic.Anthropic(api_key=config.api_key)
-
-        system_prompt = f"你是一个专业的翻译助手，请将用户提供的文本翻译成{target_lang}，保持原文的格式和段落结构。"
-        if glossary_prompt:
-            system_prompt = f"{glossary_prompt}{system_prompt}"
-
-        message = client.messages.create(
+        provider = ClaudeProvider(
+            api_key=config.api_key,
             model=config.model,
-            max_tokens=config.max_tokens,
-            system=system_prompt,
-            messages=[
-                {"role": "user", "content": text}
-            ]
+            timeout_seconds=config.timeout_seconds,
         )
-
-        return message.content[0].text, config.model
+        response = provider.translate(self._provider_request(config, text, target_lang, glossary_prompt))
+        return response.text, response.model
 
     def _translate_with_deepseek(self, text: str, target_lang: str,
                                  glossary_prompt: str = "") -> tuple:
