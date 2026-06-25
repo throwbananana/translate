@@ -33,9 +33,9 @@ Approximate status after the latest recorded implementation:
 
 | Area | Progress | Notes |
 |---|---:|---|
-| Overall upgrade plan | ~47% | Core foundations are in place, but GUI rewiring is still pending. |
-| Stability phase 1 foundations | ~90% | Run config, run guard, GUI adapter, batch controller, provider adapters are added. |
-| Provider timeout / adapter layer | ~85% | OpenAI-compatible engine path is wired; Gemini/Claude adapters exist but are not wired into `translation_engine.py` yet. |
+| Overall upgrade plan | ~50% | Provider adapter wiring is now mostly complete; GUI rewiring is still pending. |
+| Stability phase 1 foundations | ~92% | Run config, run guard, GUI adapter, batch controller, provider adapters and engine provider wiring are added. |
+| Provider timeout / adapter layer | ~95% | OpenAI-compatible, Gemini and Claude non-streaming engine paths are wired through adapters. Streaming path still needs separate evaluation. |
 | GUI thread-safety integration | ~35% | Helper layer exists; `book_translator_gui.pyw` is not rewired yet. |
 | Batch silent/resumable flow | ~55% | `BatchTaskRecord` and `BatchController` exist; GUI batch flow is not rewired yet. |
 | Tests / CI confirmation | 0% | Tests have been added but not run in this environment. |
@@ -106,12 +106,15 @@ Completed:
 - Added timeout loading in `create_engine_with_config(...)`.
 - Added timeout storage for custom local model registration.
 - Routed non-streaming OpenAI / DeepSeek / LM Studio / custom-local calls through the OpenAI-compatible adapter bridge.
+- Routed non-streaming Gemini calls through `GeminiProvider`.
+- Routed non-streaming Claude calls through `ClaudeProvider`.
+- Added shared `_provider_request(...)` helper for APIConfig-backed provider adapters.
 - Updated custom API requests to use `config.timeout_seconds` instead of a fixed timeout.
 
 Not completed:
 
-- Gemini and Claude methods in `translation_engine.py` still need to be routed through `GeminiProvider` / `ClaudeProvider`.
 - Streaming OpenAI-compatible path still uses direct SDK client logic and should be evaluated separately.
+- GUI translation workflow still needs to pass immutable run config snapshots into background workers.
 
 ### 3.4 Tests added
 
@@ -129,11 +132,12 @@ Added focused unit tests:
 - `tests/test_claude_provider.py`
 - `tests/test_engine_bridge.py`
 - `tests/test_translation_engine_adapter_bridge.py`
+- `tests/test_translation_engine_gemini_claude_adapter_bridge.py`
 
 Recommended focused test command:
 
 ```bash
-py -m pytest tests/test_translation_run_config.py tests/test_run_guard.py tests/test_gui_translation_adapter.py tests/test_batch_task.py tests/test_batch_controller.py tests/test_provider_base.py tests/test_openai_compatible_provider.py tests/test_openai_compatible_factory.py tests/test_gemini_provider.py tests/test_claude_provider.py tests/test_engine_bridge.py tests/test_translation_engine_adapter_bridge.py -q
+py -m pytest tests/test_translation_run_config.py tests/test_run_guard.py tests/test_gui_translation_adapter.py tests/test_batch_task.py tests/test_batch_controller.py tests/test_provider_base.py tests/test_openai_compatible_provider.py tests/test_openai_compatible_factory.py tests/test_gemini_provider.py tests/test_claude_provider.py tests/test_engine_bridge.py tests/test_translation_engine_adapter_bridge.py tests/test_translation_engine_gemini_claude_adapter_bridge.py -q
 ```
 
 ## 4. Remaining work backlog
@@ -157,10 +161,9 @@ py -m pytest tests/test_translation_run_config.py tests/test_run_guard.py tests/
    - add `load_file_content(filepath, silent=False)`;
    - call `load_file_content(..., silent=True)` during batch processing.
 
-4. Route Gemini / Claude engine methods through adapters:
-   - `_translate_with_gemini(...)` -> `GeminiProvider`;
-   - `_translate_with_claude(...)` -> `ClaudeProvider`;
-   - preserve existing tuple return shape and quality/memory behavior.
+4. Evaluate streaming provider path:
+   - `_stream_openai_compatible(...)` still uses direct SDK client logic;
+   - decide whether to keep as-is for now or add a streaming adapter later.
 
 5. Run focused tests and then full tests.
 
@@ -205,6 +208,34 @@ Status after this implementation:
 - GUI thread-safety integration: ~35%.
 - Batch silent/resumable flow: ~55%.
 - Tests/CI: not run yet.
+
+### 2026-06-25 — route Gemini and Claude engine calls through adapters
+
+Changed files:
+
+- `translation_engine.py`
+- `tests/test_translation_engine_gemini_claude_adapter_bridge.py`
+- `docs/upgrade-progress.md`
+
+Completed:
+
+- Imported `GeminiProvider`, `ClaudeProvider` and `ProviderRequest` into `translation_engine.py`.
+- Added `_provider_request(...)` helper to build adapter requests from `APIConfig`.
+- Replaced `_translate_with_gemini(...)` direct Gemini SDK call with `GeminiProvider.translate(...)`.
+- Replaced `_translate_with_claude(...)` direct Anthropic SDK call with `ClaudeProvider.translate(...)`.
+- Preserved the existing `(translated_text, model)` return shape for both methods.
+- Added engine-level tests that monkeypatch fake Gemini/Claude providers and assert request fields, timeout, model, max tokens and prompt instructions are passed through.
+
+Tests:
+
+- Run: not run in this environment.
+- Recommended: `py -m pytest tests/test_translation_engine_gemini_claude_adapter_bridge.py -q`
+
+Remaining / risks:
+
+- Streaming OpenAI-compatible path is still direct SDK logic.
+- GUI start/stop/worker write-back paths are still not rewired.
+- Focused and full test suites still need actual execution.
 
 ## 6. Mandatory update rule for future implementation
 
