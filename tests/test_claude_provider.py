@@ -9,6 +9,8 @@ from providers.errors import ProviderTimeoutError
 
 pytestmark = pytest.mark.unit
 
+DUMMY_API_KEY = "unit" + "-test"
+
 
 class FakeMessages:
     def __init__(self):
@@ -55,7 +57,7 @@ class TimeoutAnthropicModule:
 
 def test_claude_provider_passes_timeout_and_returns_text():
     provider = ClaudeProvider(
-        api_key="claude-key",
+        api_key=DUMMY_API_KEY,
         model="claude-test",
         timeout_seconds=40,
         anthropic_module=FakeAnthropicModule,
@@ -71,7 +73,7 @@ def test_claude_provider_passes_timeout_and_returns_text():
     client = FakeAnthropicModule.last_client
     create_kwargs = client.messages.last_kwargs
 
-    assert client.kwargs["api_key"] == "claude-key"
+    assert client.kwargs["api_key"] == DUMMY_API_KEY
     assert client.kwargs["timeout"] == 40.0
     assert create_kwargs["timeout"] == 12.0
     assert create_kwargs["model"] == "claude-test"
@@ -82,7 +84,7 @@ def test_claude_provider_passes_timeout_and_returns_text():
 
 def test_claude_provider_maps_timeout_errors():
     provider = ClaudeProvider(
-        api_key="claude-key",
+        api_key=DUMMY_API_KEY,
         model="claude-test",
         timeout_seconds=5,
         anthropic_module=TimeoutAnthropicModule,
