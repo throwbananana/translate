@@ -18,6 +18,8 @@ from .errors import ProviderResponseError, ProviderTimeoutError
 class OpenAICompatibleProvider:
     """Adapter for SDKs exposing `OpenAI(...).chat.completions.create(...)`."""
 
+    TIMEOUT_ERROR_NAMES = {"TimeoutError", "APITimeoutError", "ReadTimeout", "ConnectTimeout"}
+
     def __init__(
         self,
         *,
@@ -71,8 +73,10 @@ class OpenAICompatibleProvider:
                 max_tokens=request.max_tokens,
                 timeout=timeout,
             )
-        except TimeoutError as exc:
-            raise ProviderTimeoutError(f"provider request timed out after {timeout:.1f}s") from exc
+        except Exception as exc:
+            if self._is_timeout_error(exc):
+                raise ProviderTimeoutError(f"provider request timed out after {timeout:.1f}s") from exc
+            raise
 
         translated_text = self._extract_text(response)
         if not translated_text:
@@ -80,6 +84,13 @@ class OpenAICompatibleProvider:
 
         tokens_used = self._extract_total_tokens(response)
         return ProviderResponse(text=translated_text, model=model, tokens_used=tokens_used)
+
+    @classmethod
+    def _is_timeout_error(cls, exc: Exception) -> bool:
+        exc_type_names = {type(exc).__name__}
+        for parent in type(exc).__mro__:
+            exc_type_names.add(parent.__name__)
+        return bool(exc_type_names & cls.TIMEOUT_ERROR_NAMES)
 
     @staticmethod
     def _build_system_prompt(request: ProviderRequest) -> str:
