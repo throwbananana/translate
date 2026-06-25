@@ -12,6 +12,11 @@ from .errors import (
     ProviderResponseError,
     ProviderTimeoutError,
 )
+from .openai_compatible import OpenAICompatibleProvider
+from .openai_compatible_factory import (
+    build_custom_local_provider,
+    build_openai_compatible_provider,
+)
 
 __all__ = [
     "ProviderRequest",
@@ -21,4 +26,7 @@ __all__ = [
     "ProviderQuotaError",
     "ProviderAuthError",
     "ProviderResponseError",
+    "OpenAICompatibleProvider",
+    "build_openai_compatible_provider",
+    "build_custom_local_provider",
 ]
