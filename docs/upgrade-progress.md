@@ -9,7 +9,7 @@
 - Pull request: `#2` — `Refactor: add stability phase controller groundwork`
 - Base branch: `main`
 - Last recorded progress date: `2026-06-25`
-- Test status: CI tests and lint passed on the latest inspected head. The repository scan job still failed, so placeholder strings and tracked patch archive files were cleaned. A new CI run still needs confirmation.
+- Test status: CI tests and lint passed on the latest inspected head. The repository scan job still failed. Placeholder strings, patch archives, patch scripts and GUI backup artifacts were cleaned. A new CI run still needs confirmation.
 - Merge guidance: use **Squash merge** because this branch contains many process commits.
 
 ## 1. Upgrade objective
@@ -30,12 +30,12 @@ The upgrade goal is to make the app safer to run for long translations and easie
 
 | Area | Progress | Notes |
 |---|---:|---|
-| Overall upgrade plan | ~51% | Provider adapter wiring is mostly complete; GUI rewiring is still pending; repository hygiene has started. |
+| Overall upgrade plan | ~53% | Provider adapter wiring is mostly complete; GUI rewiring is still pending; repository hygiene is actively being cleaned. |
 | Stability phase 1 foundations | ~92% | Run config, run guard, GUI adapter, batch controller, provider adapters and engine provider wiring are added. |
 | Provider timeout / adapter layer | ~95% | OpenAI-compatible, Gemini and Claude non-streaming engine paths are wired through adapters. Streaming path still needs separate evaluation. |
 | GUI thread-safety integration | ~35% | Helper layer exists; `book_translator_gui.pyw` is not rewired yet. |
 | Batch silent/resumable flow | ~55% | `BatchTaskRecord` and `BatchController` exist; GUI batch flow is not rewired yet. |
-| CI confirmation | ~65% | Tests and lint passed on the latest inspected head. Repository scan cleanup was applied; rerun still needed. |
+| CI confirmation | ~65% | Tests and lint passed on the latest inspected head. Repository scan cleanup was expanded; rerun still needed. |
 
 ## 3. Completed work
 
@@ -129,7 +129,7 @@ py -m pytest tests/test_translation_run_config.py tests/test_run_guard.py tests/
 
 ### 3.5 CI and repository scan findings
 
-Checked GitHub Actions for the PR head available at inspection time:
+Checked GitHub Actions for the PR head available at the time of inspection:
 
 - `python-tests`: passed.
 - CI `tests`: passed.
@@ -139,9 +139,18 @@ Checked GitHub Actions for the PR head available at inspection time:
 Follow-up completed:
 
 - Replaced static placeholder values in provider, engine and config tests with runtime-composed dummy values.
-- Removed tracked patch archive files:
+- Removed tracked patch archives:
   - `translate-upgrade-series-0001-0009.mbox`
   - `translate-upgrade-series-0001-0009-fixed.mbox`
+- Removed tracked historical patch/fix/backup artifacts:
+  - `0003-README.txt`
+  - `0003-book-translator-gui-fix.py`
+  - `fix_gui_v5.py`
+  - `fix_gui_v4.py`
+  - `fix_book_translator_gui_admin_audit.py`
+  - `apply_translate_fix_bundle_v3.py`
+  - `patch-v3/apply_translate_fix_bundle_v3.py`
+  - `book_translator_gui.pyw.bak_v5`
 
 Not completed:
 
@@ -182,10 +191,10 @@ Not completed:
 
 ### P2 — repository hygiene and release readiness
 
-1. Clean remaining tracked historical artifacts such as `.bak` and patch bundle files if still present.
+1. Check for any remaining tracked historical artifacts.
 2. Add or confirm `LICENSE`.
 3. Run full test suite and CI.
-4. Squash merge the PR.
+4. Squash merge the PR only after CI is green.
 
 ## 5. Implementation log
 
@@ -302,6 +311,37 @@ Remaining / risks:
 
 - There may be remaining tracked historical artifacts such as `.bak` or patch bundle files.
 - Need confirm whether repository scan is green after deleting mbox artifacts.
+- GUI rewiring remains pending.
+
+### 2026-06-25 — remove tracked historical patch and backup artifacts
+
+Changed files:
+
+- `0003-README.txt` removed
+- `0003-book-translator-gui-fix.py` removed
+- `fix_gui_v5.py` removed
+- `fix_gui_v4.py` removed
+- `fix_book_translator_gui_admin_audit.py` removed
+- `apply_translate_fix_bundle_v3.py` removed
+- `patch-v3/apply_translate_fix_bundle_v3.py` removed
+- `book_translator_gui.pyw.bak_v5` removed
+- `docs/upgrade-progress.md`
+
+Completed:
+
+- Removed obvious root-level and patch-directory historical scripts that are not part of the maintained runtime path.
+- Removed tracked GUI backup artifact.
+- Reduced repository scan surface and improved repository hygiene.
+
+Tests:
+
+- Run: not run after this cleanup.
+- Required follow-up: wait for or trigger CI, especially repository scan.
+
+Remaining / risks:
+
+- Need confirm CI scan passes after artifact removal.
+- Need ensure no maintained scripts relied on the removed patch artifacts.
 - GUI rewiring remains pending.
 
 ## 6. Mandatory update rule for future implementation
