@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from providers.base import ProviderRequest
+from providers.errors import ProviderTimeoutError
 from providers.openai_compatible import OpenAICompatibleProvider
 
 
@@ -21,10 +22,25 @@ class FakeCompletions:
         )
 
 
+class FakeTimeoutCompletions:
+    def create(self, **kwargs):
+        class APITimeoutError(Exception):
+            pass
+
+        raise APITimeoutError("timed out")
+
+
 class FakeClient:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
         self.completions = FakeCompletions()
+        self.chat = SimpleNamespace(completions=self.completions)
+
+
+class FakeTimeoutClient:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.completions = FakeTimeoutCompletions()
         self.chat = SimpleNamespace(completions=self.completions)
 
 
@@ -34,6 +50,15 @@ class FakeOpenAIModule:
     @classmethod
     def OpenAI(cls, **kwargs):
         cls.last_client = FakeClient(**kwargs)
+        return cls.last_client
+
+
+class FakeTimeoutOpenAIModule:
+    last_client = None
+
+    @classmethod
+    def OpenAI(cls, **kwargs):
+        cls.last_client = FakeTimeoutClient(**kwargs)
         return cls.last_client
 
 
@@ -79,3 +104,15 @@ def test_translate_passes_request_timeout_and_returns_tokens():
     assert create_kwargs["timeout"] == 12.0
     assert create_kwargs["messages"][0]["role"] == "system"
     assert "保持术语一致" in create_kwargs["messages"][0]["content"]
+
+
+def test_translate_maps_sdk_timeout_errors():
+    provider = OpenAICompatibleProvider(
+        api_key="test-key",
+        model="default-model",
+        timeout_seconds=30,
+        openai_module=FakeTimeoutOpenAIModule,
+    )
+
+    with pytest.raises(ProviderTimeoutError):
+        provider.translate(ProviderRequest(text="source", target_lang="中文", timeout_seconds=5))
