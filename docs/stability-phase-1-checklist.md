@@ -30,6 +30,7 @@
 - [x] Add persistent upgrade/progress tracker at `docs/upgrade-progress.md`.
 - [x] Reduce detect-secrets false positives by replacing static fake credential values in tests.
 - [x] Remove tracked patch mbox artifacts that could trigger secret scans.
+- [x] Remove tracked historical GUI fix scripts, patch bundle scripts and GUI backup artifact.
 
 ## Next implementation steps
 
