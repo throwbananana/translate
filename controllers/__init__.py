@@ -5,6 +5,7 @@ controllers hold pure state/configuration helpers that can be tested without
 creating Tk windows.
 """
 
+from .batch_controller import BatchController, BatchQueueSnapshot, should_load_batch_file_silently
 from .gui_translation_adapter import (
     GuardedTranslationRun,
     build_run_config_from_gui_state,
@@ -20,10 +21,13 @@ __all__ = [
     "TranslationRunConfig",
     "TranslationRunGuard",
     "GuardedTranslationRun",
+    "BatchController",
+    "BatchQueueSnapshot",
     "coerce_translation_run_config",
     "build_run_config_from_gui_state",
     "start_guarded_translation_run",
     "should_apply_gui_update",
     "guarded_gui_update",
     "cancel_guarded_translation_run",
+    "should_load_batch_file_silently",
 ]
