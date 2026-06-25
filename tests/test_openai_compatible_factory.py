@@ -11,13 +11,15 @@ from providers.openai_compatible_factory import (
 
 pytestmark = pytest.mark.unit
 
+DUMMY_API_KEY = "unit" + "-test"
+
 
 def test_build_openai_compatible_provider_uses_deepseek_defaults():
-    config = SimpleNamespace(api_key="sk-test", model="", base_url="", timeout_seconds=33)
+    config = SimpleNamespace(api_key=DUMMY_API_KEY, model="", base_url="", timeout_seconds=33)
 
     provider = build_openai_compatible_provider("deepseek", config)
 
-    assert provider.api_key == "sk-test"
+    assert provider.api_key == DUMMY_API_KEY
     assert provider.model == "deepseek-chat"
     assert provider.base_url == "https://api.deepseek.com/v1"
     assert provider.timeout_seconds == 33.0
@@ -38,14 +40,14 @@ def test_build_openai_compatible_provider_accepts_mapping_config():
     provider = build_openai_compatible_provider(
         "openai",
         {
-            "api_key": "sk-test",
+            "api_key": DUMMY_API_KEY,
             "model": "gpt-test",
             "base_url": "https://example.test/v1",
             "timeout": 22,
         },
     )
 
-    assert provider.api_key == "sk-test"
+    assert provider.api_key == DUMMY_API_KEY
     assert provider.model == "gpt-test"
     assert provider.base_url == "https://example.test/v1"
     assert provider.timeout_seconds == 22.0
