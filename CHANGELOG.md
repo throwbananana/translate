@@ -5,9 +5,9 @@
 - 新增 `controllers.translation_run_config`，为后台翻译线程提供不可变运行配置快照，后续用于移除 worker 对 Tk 变量的直接读取
 - 新增 `controllers.run_guard`，为停止翻译后的迟到 worker 结果提供统一拒收机制
 - 新增 `controllers.batch_task`，统一批量任务状态、错误记录、输出路径和旧队列兼容转换
-- 新增 `providers/` adapter 基础层，包含统一 request/response/error 类型、OpenAI-compatible provider timeout 处理，以及从现有 APIConfig/custom-local-model 设置构造 adapter 的工厂函数
+- 新增 `providers/` adapter 基础层，包含统一 request/response/error 类型、OpenAI-compatible provider timeout 处理、从现有 APIConfig/custom-local-model 设置构造 adapter 的工厂函数，以及兼容 `translation_engine.py` 当前 tuple 返回值的 engine bridge
 - 新增 `docs/upgrade-plan.md`，记录稳定性、controller 下沉、Provider Adapter、批量任务与发布化路线
-- 新增 `tests/test_translation_run_config.py`、`tests/test_run_guard.py`、`tests/test_batch_task.py`、`tests/test_provider_base.py`、`tests/test_openai_compatible_provider.py` 与 `tests/test_openai_compatible_factory.py`，覆盖运行配置、停止保护、批量任务状态和 Provider timeout/factory 默认值
+- 新增 `tests/test_translation_run_config.py`、`tests/test_run_guard.py`、`tests/test_batch_task.py`、`tests/test_provider_base.py`、`tests/test_openai_compatible_provider.py`、`tests/test_openai_compatible_factory.py` 与 `tests/test_engine_bridge.py`，覆盖运行配置、停止保护、批量任务状态、Provider timeout/factory 默认值和 engine bridge 行为
 - 新增 `scripts/manual_tests/`，迁移旧手工测试脚本并保留根目录兼容入口
 - 移除手工脚本和工具脚本中的明文 Gemini API Key，统一改为环境变量读取
 - 新增 `run_manual_tests.bat`、GitHub Actions CI、开发依赖与 pytest 标记配置
