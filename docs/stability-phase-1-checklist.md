@@ -16,11 +16,12 @@
 - [x] Add unit tests for legacy batch queue normalization, batch state transitions and silent-loading decisions.
 - [x] Add `providers/` adapter package with structured provider request/response/error types.
 - [x] Add OpenAI-compatible provider adapter with explicit client/request timeout handling.
+- [x] Add Gemini and Claude provider adapters with timeout/error mapping.
 - [x] Add factory helpers to convert existing APIConfig/custom-local-model settings into OpenAI-compatible adapters.
 - [x] Add engine bridge helpers that preserve the current `(translated_text, model)` return shape while delegating to adapters.
 - [x] Replace `translation_engine.py` OpenAI / DeepSeek / LM Studio / custom-local non-streaming methods with calls to the engine bridge.
 - [x] Add `timeout_seconds` to APIConfig, API config serialization and config loading.
-- [x] Add unit tests for provider timeout coercion, adapter calls, factory defaults, engine bridge behavior and TranslationEngine bridge integration.
+- [x] Add unit tests for provider timeout coercion, adapter calls, factory defaults, Gemini/Claude timeout mapping, engine bridge behavior and TranslationEngine bridge integration.
 - [x] Add upgrade roadmap documentation.
 
 ## Next implementation steps
@@ -31,4 +32,4 @@
 - [ ] Use `guarded_gui_update(...)` or `should_apply_gui_update(...)` before every worker UI write-back.
 - [ ] Adopt `BatchController` in GUI batch queue loading/saving and `process_next_batch_file()`.
 - [ ] Make `load_file_content(..., silent=True)` the default for batch processing.
-- [ ] Add Gemini and Claude provider adapters with timeout/error mapping.
+- [ ] Route Gemini and Claude `translation_engine.py` methods through their provider adapters.
