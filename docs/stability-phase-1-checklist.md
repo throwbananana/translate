@@ -14,7 +14,8 @@
 - [x] Add `providers/` adapter package with structured provider request/response/error types.
 - [x] Add OpenAI-compatible provider adapter with explicit client/request timeout handling.
 - [x] Add factory helpers to convert existing APIConfig/custom-local-model settings into OpenAI-compatible adapters.
-- [x] Add unit tests for provider timeout coercion, adapter calls and factory defaults.
+- [x] Add engine bridge helpers that preserve the current `(translated_text, model)` return shape while delegating to adapters.
+- [x] Add unit tests for provider timeout coercion, adapter calls, factory defaults and engine bridge behavior.
 - [x] Add upgrade roadmap documentation.
 
 ## Next implementation steps
@@ -23,7 +24,7 @@
 - [ ] Pass the config snapshot into `translate_text()` and `translate_segment()`.
 - [ ] Stop reading Tk variables from background worker code.
 - [ ] Instantiate `TranslationRunGuard` in the GUI and check it before every UI write-back.
-- [ ] Route OpenAI / DeepSeek / LM Studio / custom calls through `OpenAICompatibleProvider`.
+- [ ] Replace `translation_engine.py` OpenAI / DeepSeek / LM Studio / custom-local methods with calls to the engine bridge.
 - [ ] Add Gemini and Claude provider adapters with timeout/error mapping.
 - [ ] Make batch file loading silent.
 - [ ] Normalize persisted `batch_tasks.json` through `BatchTaskRecord`.
