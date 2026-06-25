@@ -9,7 +9,8 @@
 - Pull request: `#2` — `Refactor: add stability phase controller groundwork`
 - Base branch: `main`
 - Last recorded progress date: `2026-06-25`
-- Test status: CI tests and lint passed on the latest inspected head. The repository scan job still failed. Placeholder strings, runtime config files, patch archives, patch scripts and GUI backup artifacts were cleaned. A new CI run still needs confirmation.
+- Current head: `5a2095245f75962eeca1af8b57139e3772dcc39d`
+- Test status: CI tests and lint passed on the latest inspected pre-cleanup head. The repository scan job still failed before runtime config cleanup. A new CI run for the current head still needs confirmation.
 - Merge guidance: use **Squash merge** because this branch contains many process commits.
 
 ## 1. Upgrade objective
@@ -28,12 +29,12 @@ The project is already feature-rich, but the main risks are runtime stability an
 
 | Area | Progress | Notes |
 |---|---:|---|
-| Overall upgrade plan | ~54% | Provider adapter wiring is mostly complete; GUI rewiring is still pending; repository hygiene is actively being cleaned. |
+| Overall upgrade plan | ~54% | Provider adapter wiring is mostly complete; GUI rewiring is still pending; repository hygiene cleanup has removed config/runtime artifacts. |
 | Stability phase 1 foundations | ~92% | Run config, run guard, GUI adapter, batch controller, provider adapters and engine provider wiring are added. |
 | Provider timeout / adapter layer | ~95% | OpenAI-compatible, Gemini and Claude non-streaming engine paths are wired through adapters. Streaming path still needs separate evaluation. |
 | GUI thread-safety integration | ~35% | Helper layer exists; `book_translator_gui.pyw` is not rewired yet. |
 | Batch silent/resumable flow | ~55% | `BatchTaskRecord` and `BatchController` exist; GUI batch flow is not rewired yet. |
-| CI confirmation | ~65% | Tests and lint passed on the latest inspected head. Repository scan cleanup was expanded again; rerun still needed. |
+| CI confirmation | ~65% | Tests and lint passed before the latest cleanup. Repository scan needs rerun confirmation on current head. |
 
 ## 3. Completed work
 
@@ -116,14 +117,7 @@ Recommended focused test command:
 py -m pytest tests/test_translation_run_config.py tests/test_run_guard.py tests/test_gui_translation_adapter.py tests/test_batch_task.py tests/test_batch_controller.py tests/test_provider_base.py tests/test_openai_compatible_provider.py tests/test_openai_compatible_factory.py tests/test_gemini_provider.py tests/test_claude_provider.py tests/test_engine_bridge.py tests/test_translation_engine_adapter_bridge.py tests/test_translation_engine_gemini_claude_adapter_bridge.py -q
 ```
 
-### 3.4 CI and repository scan cleanup
-
-Latest inspected GitHub Actions state:
-
-- `python-tests`: passed.
-- CI `tests`: passed.
-- CI `lint`: passed.
-- CI repository scan job: failed.
+### 3.4 Repository hygiene and scan cleanup
 
 Cleanup completed:
 
@@ -151,33 +145,29 @@ Cleanup completed:
 
 Not completed:
 
-- Need rerun CI after these cleanup changes to confirm the repository scan job is green.
+- Need CI confirmation for the current head.
 - If the scan still fails, fetch the latest job logs and inspect the exact flagged path/line.
 
 ## 4. Remaining work backlog
 
 ### P0 — finish stability phase 1
 
-1. Rewire `book_translator_gui.pyw` translation start/stop path:
+1. Confirm CI on the current head.
+2. Rewire `book_translator_gui.pyw` translation start/stop path:
    - initialize `self.translation_run_guard = TranslationRunGuard()` or use adapter helper;
    - call `start_guarded_translation_run(...)` inside `start_translation()`;
    - pass the guarded run/config snapshot into `translate_text()`;
    - pass config into `translate_segment()`;
    - stop background worker reads of `self.concurrency_var`, `self.target_language_var`, `self.style_var`.
-
-2. Guard worker UI writes:
+3. Guard worker UI writes:
    - before every background-worker result writes to widgets, use `should_apply_gui_update(...)` or `guarded_gui_update(...)`;
    - `stop_translation()` should call `cancel_guarded_translation_run(...)`.
-
-3. Rewire GUI batch processing:
+4. Rewire GUI batch processing:
    - normalize persisted queue through `BatchController`;
    - use controller status transitions in `process_next_batch_file()`;
    - add `load_file_content(filepath, silent=False)`;
    - call `load_file_content(..., silent=True)` during batch processing.
-
-4. Evaluate streaming provider path.
-
-5. Confirm CI after cleanup changes.
+5. Evaluate streaming provider path.
 
 ### P1 — controller extraction after P0
 
@@ -233,18 +223,11 @@ Completed:
 
 Changed files:
 
-- `tests/test_translation_engine_adapter_bridge.py`
-- `tests/test_engine_bridge.py`
-- `tests/test_openai_compatible_provider.py`
-- `tests/test_openai_compatible_factory.py`
-- `tests/test_gemini_provider.py`
-- `tests/test_claude_provider.py`
-- `tests/test_translation_engine_gemini_claude_adapter_bridge.py`
-- `tests/test_config_manager.py`
-- `tests/test_provider_utils.py`
-- `translate-upgrade-series-0001-0009.mbox` removed
-- `translate-upgrade-series-0001-0009-fixed.mbox` removed
-- `docs/upgrade-progress.md`
+- Provider/engine adapter tests.
+- Config/provider utility tests.
+- `translate-upgrade-series-0001-0009.mbox` removed.
+- `translate-upgrade-series-0001-0009-fixed.mbox` removed.
+- `docs/upgrade-progress.md`.
 
 Completed:
 
@@ -255,15 +238,15 @@ Completed:
 
 Changed files:
 
-- `0003-README.txt` removed
-- `0003-book-translator-gui-fix.py` removed
-- `fix_gui_v5.py` removed
-- `fix_gui_v4.py` removed
-- `fix_book_translator_gui_admin_audit.py` removed
-- `apply_translate_fix_bundle_v3.py` removed
-- `patch-v3/apply_translate_fix_bundle_v3.py` removed
-- `book_translator_gui.pyw.bak_v5` removed
-- `docs/upgrade-progress.md`
+- `0003-README.txt` removed.
+- `0003-book-translator-gui-fix.py` removed.
+- `fix_gui_v5.py` removed.
+- `fix_gui_v4.py` removed.
+- `fix_book_translator_gui_admin_audit.py` removed.
+- `apply_translate_fix_bundle_v3.py` removed.
+- `patch-v3/apply_translate_fix_bundle_v3.py` removed.
+- `book_translator_gui.pyw.bak_v5` removed.
+- `docs/upgrade-progress.md`.
 
 Completed:
 
@@ -274,13 +257,13 @@ Completed:
 
 Changed files:
 
-- `translator_config.json` removed
-- `config_backups/config_backup_20251225_161944.json` removed
-- `config_backups/config_backup_20260202_162940.json` removed
-- `config_backups/config_backup_20260328_094858.json` removed
-- `test_autosave.py` removed
-- `API_AUTO_SAVE.txt` removed
-- `docs/upgrade-progress.md`
+- `translator_config.json` removed.
+- `config_backups/config_backup_20251225_161944.json` removed.
+- `config_backups/config_backup_20260202_162940.json` removed.
+- `config_backups/config_backup_20260328_094858.json` removed.
+- `test_autosave.py` removed.
+- `API_AUTO_SAVE.txt` removed.
+- `docs/upgrade-progress.md`.
 
 Completed:
 
@@ -291,7 +274,7 @@ Completed:
 Tests:
 
 - Run: not run after this cleanup.
-- Required follow-up: wait for or trigger CI, especially repository scan.
+- Required follow-up: confirm CI on current head.
 
 ## 6. Mandatory update rule for future implementation
 
