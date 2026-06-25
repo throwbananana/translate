@@ -12,6 +12,8 @@ from provider_utils import (
 
 pytestmark = pytest.mark.unit
 
+DUMMY_API_KEY = "unit" + "-test"
+
 
 def test_lm_studio_is_ready_without_api_key():
     api_configs = {
@@ -53,7 +55,7 @@ def test_custom_local_model_requires_base_url_and_model_id():
 
 def test_choose_fallback_provider_prefers_lm_studio():
     api_configs = {
-        "openai": {"api_key": "sk-test", "model": "gpt-4o-mini", "base_url": ""},
+        "openai": {"api_key": DUMMY_API_KEY, "model": "gpt-4o-mini", "base_url": ""},
         "lm_studio": {"api_key": "", "base_url": "http://127.0.0.1:1234/v1", "model": "qwen"},
     }
     custom_local_models = {
@@ -67,7 +69,7 @@ def test_choose_fallback_provider_prefers_lm_studio():
 def test_provider_error_message_for_missing_dependency():
     message = provider_error_message(
         "openai",
-        api_configs={"openai": {"api_key": "sk-test", "model": "gpt-4o-mini"}},
+        api_configs={"openai": {"api_key": DUMMY_API_KEY, "model": "gpt-4o-mini"}},
         support_flags={"openai": False},
     )
 
