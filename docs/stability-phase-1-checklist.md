@@ -31,6 +31,7 @@
 - [x] Reduce detect-secrets false positives by replacing static fake credential values in tests.
 - [x] Remove tracked patch mbox artifacts that could trigger secret scans.
 - [x] Remove tracked historical GUI fix scripts, patch bundle scripts and GUI backup artifact.
+- [x] Remove tracked runtime config, config backup and legacy autosave artifacts.
 
 ## Next implementation steps
 
