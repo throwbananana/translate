@@ -6,11 +6,13 @@ from translation_engine import APIConfig, APIProvider, TranslationEngine, create
 
 pytestmark = pytest.mark.unit
 
+DUMMY_API_KEY = "unit" + "-test"
+
 
 def test_api_config_accepts_timeout_seconds():
     config = APIConfig(
         provider=APIProvider.OPENAI,
-        api_key="sk-test",
+        api_key=DUMMY_API_KEY,
         model="gpt-test",
         timeout_seconds=12,
     )
@@ -24,7 +26,7 @@ def test_engine_serializes_timeout_seconds():
         "openai",
         APIConfig(
             provider=APIProvider.OPENAI,
-            api_key="sk-test",
+            api_key=DUMMY_API_KEY,
             model="gpt-test",
             timeout_seconds=21,
         ),
@@ -48,7 +50,7 @@ def test_openai_path_uses_engine_bridge(monkeypatch):
     engine = TranslationEngine()
     config = APIConfig(
         provider=APIProvider.OPENAI,
-        api_key="sk-test",
+        api_key=DUMMY_API_KEY,
         model="gpt-test",
         timeout_seconds=30,
     )
@@ -76,7 +78,7 @@ def test_deepseek_and_lm_studio_paths_use_engine_bridge(monkeypatch):
     engine = TranslationEngine()
     engine.add_api_config(
         "deepseek",
-        APIConfig(provider=APIProvider.DEEPSEEK, api_key="sk-test", model=""),
+        APIConfig(provider=APIProvider.DEEPSEEK, api_key=DUMMY_API_KEY, model=""),
     )
     engine.add_api_config(
         "lm_studio",
@@ -120,7 +122,7 @@ def test_create_engine_with_config_reads_timeout_seconds(monkeypatch):
     engine = create_engine_with_config({
         "api_configs": {
             "openai": {
-                "api_key": "sk-test",
+                "api_key": DUMMY_API_KEY,
                 "model": "gpt-test",
                 "timeout_seconds": 44,
             }
