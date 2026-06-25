@@ -13,7 +13,8 @@
 - [x] Add unit tests for legacy batch queue normalization and state transitions.
 - [x] Add `providers/` adapter package with structured provider request/response/error types.
 - [x] Add OpenAI-compatible provider adapter with explicit client/request timeout handling.
-- [x] Add unit tests for provider timeout coercion and OpenAI-compatible adapter calls.
+- [x] Add factory helpers to convert existing APIConfig/custom-local-model settings into OpenAI-compatible adapters.
+- [x] Add unit tests for provider timeout coercion, adapter calls and factory defaults.
 - [x] Add upgrade roadmap documentation.
 
 ## Next implementation steps
