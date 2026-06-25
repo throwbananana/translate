@@ -26,6 +26,10 @@ from provider_utils import (
     list_ready_custom_local_models,
     provider_ready,
 )
+from providers.engine_bridge import (
+    translate_with_custom_local_config,
+    translate_with_openai_compatible_config,
+)
 
 # API 支持检测
 try:
@@ -51,6 +55,9 @@ try:
     REQUESTS_SUPPORT = True
 except ImportError:
     REQUESTS_SUPPORT = False
+
+
+DEFAULT_PROVIDER_TIMEOUT_SECONDS = 90.0
 
 
 class APIProvider(Enum):
@@ -106,6 +113,7 @@ class APIConfig:
     base_url: str = ""
     temperature: float = 0.2
     max_tokens: int = 4096
+    timeout_seconds: float = DEFAULT_PROVIDER_TIMEOUT_SECONDS
 
 
 class TranslationEngine:
@@ -144,13 +152,15 @@ class TranslationEngine:
 
     def add_custom_local_model(self, name: str, display_name: str,
                                base_url: str, model_id: str,
-                               api_key: str = "lm-studio"):
+                               api_key: str = "lm-studio",
+                               timeout_seconds: float = DEFAULT_PROVIDER_TIMEOUT_SECONDS):
         """添加自定义本地模型"""
         self.custom_local_models[name] = {
             'display_name': display_name,
             'base_url': base_url,
             'model_id': model_id,
-            'api_key': api_key
+            'api_key': api_key,
+            'timeout_seconds': timeout_seconds,
         }
 
     def set_fallback_provider(self, provider_name: str):
@@ -174,6 +184,7 @@ class TranslationEngine:
                 "base_url": config.base_url,
                 "temperature": config.temperature,
                 "max_tokens": config.max_tokens,
+                "timeout_seconds": config.timeout_seconds,
             }
         return serialized
 
@@ -290,7 +301,7 @@ class TranslationEngine:
         glossary_prompt = ""
         if use_glossary and self.glossary_manager:
             glossary_prompt = self.glossary_manager.generate_prompt_injection(text)
-            
+
         # 组合提示词 parts
         prompt_parts = []
         if extra_prompt:
@@ -299,7 +310,7 @@ class TranslationEngine:
             prompt_parts.append(f"\n【上下文参考】\n上一段译文：{context}\n请在翻译时保持与上下文的连贯性。")
         if glossary_prompt:
             prompt_parts.append(glossary_prompt)
-            
+
         final_system_instruction = "\n\n".join(prompt_parts)
 
         # 执行翻译
@@ -338,15 +349,15 @@ class TranslationEngine:
             is_quota_error = any(
                 kw in error_msg for kw in self.QUOTA_ERROR_KEYWORDS
             )
-            
+
             # 自动重试逻辑
             if is_quota_error and retry_count < max_retries:
                 # 尝试解析建议的等待时间
-                wait_time = 5 * (2 ** retry_count) # 默认指数退避
+                wait_time = 5 * (2 ** retry_count)  # 默认指数退避
                 match = re.search(r"retry in (\d+(\.\d+)?)s", str(e))
                 if match:
-                    wait_time = float(match.group(1)) + 1.0 # 额外加1秒缓冲
-                
+                    wait_time = float(match.group(1)) + 1.0  # 额外加1秒缓冲
+
                 # 限制最大等待时间 (例如 60秒)
                 wait_time = min(wait_time, 60.0)
 
@@ -354,8 +365,8 @@ class TranslationEngine:
                 if self.on_progress:
                     self.on_progress(msg)
                 else:
-                    print(f"[Engine] {msg}") # Fallback logging
-                
+                    print(f"[Engine] {msg}")  # Fallback logging
+
                 time.sleep(wait_time)
                 return self.translate(
                     text, target_lang,
@@ -455,26 +466,13 @@ class TranslationEngine:
         if not config:
             raise ValueError("未配置 OpenAI API")
 
-        client_kwargs = {'api_key': config.api_key}
-        if config.base_url:
-            client_kwargs['base_url'] = config.base_url
-
-        client = openai.OpenAI(**client_kwargs)
-
-        system_prompt = f"你是一个专业的翻译助手，请将用户提供的文本翻译成{target_lang}，保持原文的格式和段落结构。"
-        if glossary_prompt:
-            system_prompt = f"{glossary_prompt}{system_prompt}"
-
-        response = client.chat.completions.create(
-            model=config.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": text}
-            ],
-            temperature=config.temperature
+        return translate_with_openai_compatible_config(
+            provider_name='openai',
+            config=config,
+            text=text,
+            target_lang=target_lang,
+            glossary_prompt=glossary_prompt,
         )
-
-        return response.choices[0].message.content, config.model
 
     def _translate_with_claude(self, text: str, target_lang: str,
                                glossary_prompt: str = "") -> tuple:
@@ -513,26 +511,13 @@ class TranslationEngine:
         if not config:
             raise ValueError("未配置 DeepSeek API")
 
-        # DeepSeek 使用 OpenAI 兼容接口
-        client = openai.OpenAI(
-            api_key=config.api_key,
-            base_url=config.base_url or "https://api.deepseek.com/v1"
+        return translate_with_openai_compatible_config(
+            provider_name='deepseek',
+            config=config,
+            text=text,
+            target_lang=target_lang,
+            glossary_prompt=glossary_prompt,
         )
-
-        system_prompt = f"你是一个专业的翻译助手，请将用户提供的文本翻译成{target_lang}，保持原文的格式和段落结构。"
-        if glossary_prompt:
-            system_prompt = f"{glossary_prompt}{system_prompt}"
-
-        response = client.chat.completions.create(
-            model=config.model or "deepseek-chat",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": text}
-            ],
-            temperature=config.temperature
-        )
-
-        return response.choices[0].message.content, config.model
 
     def _translate_with_lm_studio(self, text: str, target_lang: str,
                                   glossary_prompt: str = "") -> tuple:
@@ -544,25 +529,13 @@ class TranslationEngine:
         if not config:
             raise ValueError("未配置 LM Studio")
 
-        client = openai.OpenAI(
-            api_key=config.api_key or "lm-studio",
-            base_url=config.base_url or "http://127.0.0.1:1234/v1"
+        return translate_with_openai_compatible_config(
+            provider_name='lm_studio',
+            config=config,
+            text=text,
+            target_lang=target_lang,
+            glossary_prompt=glossary_prompt,
         )
-
-        system_prompt = f"你是一个专业的翻译助手，请将用户提供的文本翻译成{target_lang}，保持原文的格式和段落结构。"
-        if glossary_prompt:
-            system_prompt = f"{glossary_prompt}{system_prompt}"
-
-        response = client.chat.completions.create(
-            model=config.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": text}
-            ],
-            temperature=config.temperature
-        )
-
-        return response.choices[0].message.content, config.model
 
     def _translate_with_custom_api(self, text: str, target_lang: str,
                                    glossary_prompt: str = "") -> tuple:
@@ -593,7 +566,7 @@ class TranslationEngine:
             'temperature': config.temperature
         }
 
-        response = requests.post(url, headers=headers, json=data, timeout=60)
+        response = requests.post(url, headers=headers, json=data, timeout=config.timeout_seconds)
         response.raise_for_status()
 
         result = response.json()
@@ -609,25 +582,13 @@ class TranslationEngine:
         if not config:
             raise ValueError(f"未找到本地模型: {model_key}")
 
-        client = openai.OpenAI(
-            api_key=config.get('api_key') or 'lm-studio',
-            base_url=config['base_url']
+        return translate_with_custom_local_config(
+            model_key=model_key,
+            config=config,
+            text=text,
+            target_lang=target_lang,
+            glossary_prompt=glossary_prompt,
         )
-
-        system_prompt = f"你是一个专业的翻译助手，请将用户提供的文本翻译成{target_lang}，保持原文的格式和段落结构。"
-        if glossary_prompt:
-            system_prompt = f"{glossary_prompt}{system_prompt}"
-
-        response = client.chat.completions.create(
-            model=config['model_id'],
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": text}
-            ],
-            temperature=0.2
-        )
-
-        return response.choices[0].message.content, config['model_id']
 
     def translate_stream(self, text: str, target_lang: str,
                          provider: str = None) -> Generator[str, None, None]:
@@ -676,7 +637,8 @@ class TranslationEngine:
             config = self.custom_local_models[provider]
             client = openai.OpenAI(
                 api_key=config.get('api_key') or 'lm-studio',
-                base_url=config['base_url']
+                base_url=config['base_url'],
+                timeout=config.get('timeout_seconds', DEFAULT_PROVIDER_TIMEOUT_SECONDS),
             )
             model = config['model_id']
         else:
@@ -686,7 +648,8 @@ class TranslationEngine:
                 return
 
             client_kwargs = {
-                'api_key': api_config.api_key or ("lm-studio" if provider == "lm_studio" else api_config.api_key)
+                'api_key': api_config.api_key or ("lm-studio" if provider == "lm_studio" else api_config.api_key),
+                'timeout': api_config.timeout_seconds,
             }
             if api_config.base_url:
                 client_kwargs['base_url'] = api_config.base_url
@@ -777,7 +740,6 @@ class TranslationEngine:
         # 长度比例检查
         target_is_chinese = any(kw in target_lang.lower() for kw in ['中文', '汉语', 'chinese', 'zh'])
         expected_ratio = 0.5 if target_is_chinese else 1.0
-
         actual_ratio = len(normalized) / len(source) if source else 0
         ratio_diff = abs(actual_ratio - expected_ratio)
 
@@ -895,7 +857,8 @@ def create_engine_with_config(config: dict) -> TranslationEngine:
             model=cfg.get('model', ''),
             base_url=cfg.get('base_url', ''),
             temperature=cfg.get('temperature', 0.2),
-            max_tokens=cfg.get('max_tokens', 4096)
+            max_tokens=cfg.get('max_tokens', 4096),
+            timeout_seconds=cfg.get('timeout_seconds') or cfg.get('timeout') or DEFAULT_PROVIDER_TIMEOUT_SECONDS,
         ))
 
     # 自定义本地模型
@@ -912,7 +875,8 @@ def create_engine_with_config(config: dict) -> TranslationEngine:
             display_name=cfg.get('display_name', name),
             base_url=cfg.get('base_url', ''),
             model_id=cfg.get('model_id', ''),
-            api_key=cfg.get('api_key') or 'lm-studio'
+            api_key=cfg.get('api_key') or 'lm-studio',
+            timeout_seconds=cfg.get('timeout_seconds') or cfg.get('timeout') or DEFAULT_PROVIDER_TIMEOUT_SECONDS,
         )
 
     fallback_provider = choose_fallback_provider(
