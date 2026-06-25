@@ -10,7 +10,7 @@
 - Pull request: `#2` — `Refactor: add stability phase controller groundwork`
 - Base branch: `main`
 - Last recorded progress date: `2026-06-25`
-- Test status: **CI tests and lint passed on the previous checked head; secrets scan failed and fake static test keys were adjusted. Awaiting a new CI rerun.**
+- Test status: **CI tests and lint passed on the latest inspected head; secrets scan still failed. Static fake keys were cleaned again and tracked patch `.mbox` artifacts were removed. Awaiting a new CI rerun.**
 - Merge guidance: use **Squash merge** because this branch contains many process commits.
 
 ## 1. Upgrade objective
@@ -33,12 +33,12 @@ Approximate status after the latest recorded implementation:
 
 | Area | Progress | Notes |
 |---|---:|---|
-| Overall upgrade plan | ~50% | Provider adapter wiring is now mostly complete; GUI rewiring is still pending. |
+| Overall upgrade plan | ~51% | Provider adapter wiring is mostly complete; GUI rewiring is still pending; repository hygiene has started. |
 | Stability phase 1 foundations | ~92% | Run config, run guard, GUI adapter, batch controller, provider adapters and engine provider wiring are added. |
 | Provider timeout / adapter layer | ~95% | OpenAI-compatible, Gemini and Claude non-streaming engine paths are wired through adapters. Streaming path still needs separate evaluation. |
 | GUI thread-safety integration | ~35% | Helper layer exists; `book_translator_gui.pyw` is not rewired yet. |
 | Batch silent/resumable flow | ~55% | `BatchTaskRecord` and `BatchController` exist; GUI batch flow is not rewired yet. |
-| Tests / CI confirmation | ~60% | CI tests and lint passed on a previous checked head; secrets scan failed, likely from static fake test keys. Test keys were changed to runtime dummy values; rerun still needed. |
+| Tests / CI confirmation | ~65% | CI tests and lint passed on the latest inspected head; secrets scan still failed. Additional fake keys and `.mbox` artifacts were cleaned; rerun still needed. |
 
 ## 3. Completed work
 
@@ -152,10 +152,14 @@ Checked GitHub Actions for the PR head available at the time of inspection:
 Follow-up completed:
 
 - Replaced static fake test keys such as OpenAI/Gemini/Claude-looking strings in tests with runtime-composed dummy values.
+- Replaced additional static fake config credentials in `tests/test_config_manager.py`.
+- Removed tracked patch artifacts:
+  - `translate-upgrade-series-0001-0009.mbox`
+  - `translate-upgrade-series-0001-0009-fixed.mbox`
 
 Not completed:
 
-- Need rerun CI after the fake-key changes to confirm the secrets job is green.
+- Need rerun CI after these cleanup changes to confirm the secrets job is green.
 - If secrets still fails, fetch the latest secrets job logs and inspect the exact flagged path/line.
 
 ## 4. Remaining work backlog
@@ -184,7 +188,7 @@ Not completed:
    - decide whether to keep as-is for now or add a streaming adapter later.
 
 5. Confirm CI:
-   - rerun/inspect secrets job after fake-key changes;
+   - rerun/inspect secrets job after cleanup changes;
    - run focused tests and then full tests.
 
 ### P1 — controller extraction after P0
@@ -196,7 +200,7 @@ Not completed:
 
 ### P2 — repository hygiene and release readiness
 
-1. Clean tracked historical artifacts such as `.mbox`, `.bak`, and patch bundle files if still present.
+1. Clean remaining tracked historical artifacts such as `.bak` and patch bundle files if still present.
 2. Add or confirm `LICENSE`.
 3. Run full test suite and CI.
 4. Squash merge the PR.
@@ -288,6 +292,32 @@ Remaining / risks:
 
 - Need confirm secrets job passes on a new CI run.
 - If secrets still fails, inspect latest secrets job logs for exact flagged lines.
+- GUI rewiring remains pending.
+
+### 2026-06-25 — remove remaining fake credentials and patch mbox artifacts
+
+Changed files:
+
+- `tests/test_config_manager.py`
+- `translate-upgrade-series-0001-0009.mbox` removed
+- `translate-upgrade-series-0001-0009-fixed.mbox` removed
+- `docs/upgrade-progress.md`
+
+Completed:
+
+- Replaced additional static fake credential values in `tests/test_config_manager.py` with runtime-composed dummy values.
+- Removed tracked patch `.mbox` artifacts that contained old patch contents and could keep triggering secret scans.
+- Searched for common remaining fake key literals after cleanup.
+
+Tests:
+
+- Run: not run after this cleanup.
+- Required follow-up: rerun/inspect CI, especially `secrets`.
+
+Remaining / risks:
+
+- There may be remaining tracked historical artifacts such as `.bak` or patch bundle files.
+- Need confirm whether detect-secrets is green after deleting mbox artifacts.
 - GUI rewiring remains pending.
 
 ## 6. Mandatory update rule for future implementation
