@@ -12,7 +12,8 @@
 - [x] Add GUI-facing adapter helpers to read Tk-style values on the GUI thread, start guarded runs, and skip stale worker UI updates.
 - [x] Add unit tests for GUI translation adapter helpers.
 - [x] Add `BatchTaskRecord` and normalized batch task statuses.
-- [x] Add unit tests for legacy batch queue normalization and state transitions.
+- [x] Add `BatchController` to normalize queues, select next runnable tasks, update task statuses, cancel pending tasks and serialize back to legacy dicts.
+- [x] Add unit tests for legacy batch queue normalization, batch state transitions and silent-loading decisions.
 - [x] Add `providers/` adapter package with structured provider request/response/error types.
 - [x] Add OpenAI-compatible provider adapter with explicit client/request timeout handling.
 - [x] Add factory helpers to convert existing APIConfig/custom-local-model settings into OpenAI-compatible adapters.
@@ -28,6 +29,6 @@
 - [ ] Pass the config snapshot into `translate_text()` and `translate_segment()`.
 - [ ] Stop reading Tk variables from background worker code.
 - [ ] Use `guarded_gui_update(...)` or `should_apply_gui_update(...)` before every worker UI write-back.
+- [ ] Adopt `BatchController` in GUI batch queue loading/saving and `process_next_batch_file()`.
+- [ ] Make `load_file_content(..., silent=True)` the default for batch processing.
 - [ ] Add Gemini and Claude provider adapters with timeout/error mapping.
-- [ ] Make batch file loading silent.
-- [ ] Normalize persisted `batch_tasks.json` through `BatchTaskRecord`.
