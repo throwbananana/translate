@@ -5,6 +5,11 @@ They should expose small, testable classes with explicit timeout handling.
 """
 
 from .base import ProviderRequest, ProviderResponse
+from .engine_bridge import (
+    build_translation_system_instruction,
+    translate_with_custom_local_config,
+    translate_with_openai_compatible_config,
+)
 from .errors import (
     ProviderAuthError,
     ProviderError,
@@ -29,4 +34,7 @@ __all__ = [
     "OpenAICompatibleProvider",
     "build_openai_compatible_provider",
     "build_custom_local_provider",
+    "build_translation_system_instruction",
+    "translate_with_openai_compatible_config",
+    "translate_with_custom_local_config",
 ]
