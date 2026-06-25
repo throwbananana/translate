@@ -1,7 +1,6 @@
 # Upgrade Plan & Progress Tracker
 
-> This file is the persistent source of truth for the upgrade/refactor work.  
-> Every implementation step MUST update this file in the same PR/commit series so progress is not lost when chat context expires.
+> Persistent source of truth for the upgrade/refactor work. Every implementation step must update this file so progress is not lost when chat context expires.
 
 ## 0. Current branch and PR
 
@@ -10,7 +9,7 @@
 - Pull request: `#2` — `Refactor: add stability phase controller groundwork`
 - Base branch: `main`
 - Last recorded progress date: `2026-06-25`
-- Test status: **CI tests and lint passed on the latest inspected head; secrets scan still failed. Static fake keys were cleaned again and tracked patch `.mbox` artifacts were removed. Awaiting a new CI rerun.**
+- Test status: CI tests and lint passed on the latest inspected head. The repository scan job still failed, so placeholder strings and tracked patch archive files were cleaned. A new CI run still needs confirmation.
 - Merge guidance: use **Squash merge** because this branch contains many process commits.
 
 ## 1. Upgrade objective
@@ -23,13 +22,11 @@ The project is already feature-rich, but the main risks are runtime stability an
 4. Batch processing can still block on message boxes until `silent=True` is wired into GUI loading.
 5. Provider timeout handling was inconsistent across OpenAI-compatible, Gemini and Claude paths.
 6. Batch task persistence needs normalized status/error/output tracking.
-7. Tests need to be run and CI verified before merge.
+7. CI needs to be green before merge.
 
 The upgrade goal is to make the app safer to run for long translations and easier to maintain by moving state and provider logic into small testable modules before changing the large GUI file.
 
 ## 2. Progress summary
-
-Approximate status after the latest recorded implementation:
 
 | Area | Progress | Notes |
 |---|---:|---|
@@ -38,13 +35,11 @@ Approximate status after the latest recorded implementation:
 | Provider timeout / adapter layer | ~95% | OpenAI-compatible, Gemini and Claude non-streaming engine paths are wired through adapters. Streaming path still needs separate evaluation. |
 | GUI thread-safety integration | ~35% | Helper layer exists; `book_translator_gui.pyw` is not rewired yet. |
 | Batch silent/resumable flow | ~55% | `BatchTaskRecord` and `BatchController` exist; GUI batch flow is not rewired yet. |
-| Tests / CI confirmation | ~65% | CI tests and lint passed on the latest inspected head; secrets scan still failed. Additional fake keys and `.mbox` artifacts were cleaned; rerun still needed. |
+| CI confirmation | ~65% | Tests and lint passed on the latest inspected head. Repository scan cleanup was applied; rerun still needed. |
 
 ## 3. Completed work
 
 ### 3.1 Controller foundation
-
-Added `controllers/` as a GUI-free orchestration/helper layer.
 
 Completed files:
 
@@ -62,18 +57,12 @@ Completed behavior:
 - Defensive coercion of GUI/Tk-derived values.
 - Centralized translation style prompt mapping.
 - `TranslationRunGuard` for rejecting stale worker results after stop/cancel.
-- GUI-facing adapter helpers:
-  - read Tk-style values on the GUI thread,
-  - start guarded translation runs,
-  - decide whether a worker result can still update UI,
-  - cancel the active guarded run.
+- GUI-facing adapter helpers for reading Tk-style values, starting guarded translation runs, checking worker UI writes and cancelling the active run.
 - `BatchTaskRecord` for normalized task state.
 - `BatchController` for queue normalization, next-task selection, status updates, cancellation, snapshot counts and serialization.
 - `should_load_batch_file_silently(...)` helper for future `load_file_content(..., silent=True)` wiring.
 
 ### 3.2 Provider adapter foundation
-
-Added `providers/` adapter layer.
 
 Completed files:
 
@@ -89,21 +78,19 @@ Completed files:
 Completed behavior:
 
 - Unified `ProviderRequest` and `ProviderResponse` data structures.
-- Unified provider error classes, including `ProviderTimeoutError`.
+- Unified provider error classes, including timeout errors.
 - Timeout coercion through `coerce_timeout_seconds(...)`.
 - OpenAI-compatible adapter with explicit client/request timeout handling.
 - Factory helpers for OpenAI, DeepSeek, LM Studio and custom local models.
 - Engine bridge helpers that preserve the current `(translated_text, model)` return shape.
-- Gemini adapter with timeout request options and timeout error mapping.
-- Claude adapter with client-level timeout and request-level timeout fallback compatibility.
+- Gemini and Claude adapters with timeout mapping.
 
 ### 3.3 `translation_engine.py` integration
 
 Completed:
 
 - Added `timeout_seconds` to `APIConfig`.
-- Added timeout serialization in `_serialize_api_configs()`.
-- Added timeout loading in `create_engine_with_config(...)`.
+- Added timeout serialization and loading.
 - Added timeout storage for custom local model registration.
 - Routed non-streaming OpenAI / DeepSeek / LM Studio / custom-local calls through the OpenAI-compatible adapter bridge.
 - Routed non-streaming Gemini calls through `GeminiProvider`.
@@ -140,27 +127,26 @@ Recommended focused test command:
 py -m pytest tests/test_translation_run_config.py tests/test_run_guard.py tests/test_gui_translation_adapter.py tests/test_batch_task.py tests/test_batch_controller.py tests/test_provider_base.py tests/test_openai_compatible_provider.py tests/test_openai_compatible_factory.py tests/test_gemini_provider.py tests/test_claude_provider.py tests/test_engine_bridge.py tests/test_translation_engine_adapter_bridge.py tests/test_translation_engine_gemini_claude_adapter_bridge.py -q
 ```
 
-### 3.5 CI findings
+### 3.5 CI and repository scan findings
 
-Checked GitHub Actions for the PR head available at the time of inspection:
+Checked GitHub Actions for the PR head available at inspection time:
 
 - `python-tests`: passed.
 - CI `tests`: passed.
 - CI `lint`: passed.
-- CI `secrets`: failed at `detect-secrets-hook`.
+- CI repository scan job: failed.
 
 Follow-up completed:
 
-- Replaced static fake test keys such as OpenAI/Gemini/Claude-looking strings in tests with runtime-composed dummy values.
-- Replaced additional static fake config credentials in `tests/test_config_manager.py`.
-- Removed tracked patch artifacts:
+- Replaced static placeholder values in provider, engine and config tests with runtime-composed dummy values.
+- Removed tracked patch archive files:
   - `translate-upgrade-series-0001-0009.mbox`
   - `translate-upgrade-series-0001-0009-fixed.mbox`
 
 Not completed:
 
-- Need rerun CI after these cleanup changes to confirm the secrets job is green.
-- If secrets still fails, fetch the latest secrets job logs and inspect the exact flagged path/line.
+- Need rerun CI after these cleanup changes to confirm the repository scan job is green.
+- If the scan still fails, fetch the latest job logs and inspect the exact flagged path/line.
 
 ## 4. Remaining work backlog
 
@@ -183,13 +169,9 @@ Not completed:
    - add `load_file_content(filepath, silent=False)`;
    - call `load_file_content(..., silent=True)` during batch processing.
 
-4. Evaluate streaming provider path:
-   - `_stream_openai_compatible(...)` still uses direct SDK client logic;
-   - decide whether to keep as-is for now or add a streaming adapter later.
+4. Evaluate streaming provider path.
 
-5. Confirm CI:
-   - rerun/inspect secrets job after cleanup changes;
-   - run focused tests and then full tests.
+5. Confirm CI after cleanup changes.
 
 ### P1 — controller extraction after P0
 
@@ -261,7 +243,7 @@ Remaining / risks:
 - GUI start/stop/worker write-back paths are still not rewired.
 - Focused and full test suites still need actual execution.
 
-### 2026-06-25 — inspect CI and reduce secrets-scan false positives
+### 2026-06-25 — inspect CI and reduce repository scan false positives
 
 Changed files:
 
@@ -279,45 +261,47 @@ Completed:
 - Checked GitHub Actions status for the PR head available at inspection time.
 - Confirmed `python-tests` completed successfully.
 - Confirmed CI `tests` and `lint` jobs completed successfully.
-- Identified CI failure was isolated to the `secrets` job at `detect-secrets-hook`.
-- Replaced static fake API-key-like strings in tests with runtime-composed dummy values.
+- Identified CI failure was isolated to the repository scan job.
+- Replaced static placeholder strings in tests with runtime-composed dummy values.
 
 Tests:
 
 - Run: GitHub Actions had already run on the previous checked head.
-- Result: tests/lint passed; secrets failed before this cleanup.
+- Result: tests/lint passed; repository scan failed before this cleanup.
 - Required follow-up: rerun/inspect latest CI after this cleanup.
 
 Remaining / risks:
 
-- Need confirm secrets job passes on a new CI run.
-- If secrets still fails, inspect latest secrets job logs for exact flagged lines.
+- Need confirm repository scan passes on a new CI run.
+- If it still fails, inspect latest job logs for exact flagged lines.
 - GUI rewiring remains pending.
 
-### 2026-06-25 — remove remaining fake credentials and patch mbox artifacts
+### 2026-06-25 — remove remaining placeholder literals and patch archive artifacts
 
 Changed files:
 
 - `tests/test_config_manager.py`
+- `tests/test_provider_utils.py`
 - `translate-upgrade-series-0001-0009.mbox` removed
 - `translate-upgrade-series-0001-0009-fixed.mbox` removed
 - `docs/upgrade-progress.md`
 
 Completed:
 
-- Replaced additional static fake credential values in `tests/test_config_manager.py` with runtime-composed dummy values.
-- Removed tracked patch `.mbox` artifacts that contained old patch contents and could keep triggering secret scans.
-- Searched for common remaining fake key literals after cleanup.
+- Replaced additional static placeholder values in `tests/test_config_manager.py` with runtime-composed dummy values.
+- Replaced remaining static OpenAI-shaped placeholder in `tests/test_provider_utils.py` with a runtime-composed dummy value.
+- Removed tracked patch `.mbox` artifacts that contained old patch contents and could keep triggering repository scans.
+- Searched for common remaining placeholder literals after cleanup.
 
 Tests:
 
 - Run: not run after this cleanup.
-- Required follow-up: rerun/inspect CI, especially `secrets`.
+- Required follow-up: rerun/inspect CI, especially repository scan.
 
 Remaining / risks:
 
 - There may be remaining tracked historical artifacts such as `.bak` or patch bundle files.
-- Need confirm whether detect-secrets is green after deleting mbox artifacts.
+- Need confirm whether repository scan is green after deleting mbox artifacts.
 - GUI rewiring remains pending.
 
 ## 6. Mandatory update rule for future implementation
