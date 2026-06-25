@@ -12,6 +12,7 @@
 - 新增 `tests/test_translation_run_config.py`、`tests/test_run_guard.py`、`tests/test_gui_translation_adapter.py`、`tests/test_batch_task.py`、`tests/test_batch_controller.py`、`tests/test_provider_base.py`、`tests/test_openai_compatible_provider.py`、`tests/test_openai_compatible_factory.py`、`tests/test_gemini_provider.py`、`tests/test_claude_provider.py`、`tests/test_engine_bridge.py`、`tests/test_translation_engine_adapter_bridge.py` 与 `tests/test_translation_engine_gemini_claude_adapter_bridge.py`，覆盖运行配置、停止保护、GUI adapter、批量任务状态、批量队列控制、Provider timeout/factory 默认值、Gemini/Claude timeout 映射、engine bridge 和 TranslationEngine 接入行为
 - 测试中的静态假 API key / credential 字符串已改为运行时 dummy 值，减少 detect-secrets 误报风险
 - 移除 tracked patch mbox artifacts：`translate-upgrade-series-0001-0009.mbox` 与 `translate-upgrade-series-0001-0009-fixed.mbox`
+- 移除 root/patch 目录下的历史 GUI 修复脚本、patch bundle 和 `book_translator_gui.pyw.bak_v5` 备份文件，降低 repository scan 误报面并改善仓库卫生
 - 新增 `scripts/manual_tests/`，迁移旧手工测试脚本并保留根目录兼容入口
 - 移除手工脚本和工具脚本中的明文 Gemini API Key，统一改为环境变量读取
 - 新增 `run_manual_tests.bat`、GitHub Actions CI、开发依赖与 pytest 标记配置
