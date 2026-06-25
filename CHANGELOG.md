@@ -13,6 +13,7 @@
 - 测试中的静态假 API key / credential 字符串已改为运行时 dummy 值，减少 detect-secrets 误报风险
 - 移除 tracked patch mbox artifacts：`translate-upgrade-series-0001-0009.mbox` 与 `translate-upgrade-series-0001-0009-fixed.mbox`
 - 移除 root/patch 目录下的历史 GUI 修复脚本、patch bundle 和 `book_translator_gui.pyw.bak_v5` 备份文件，降低 repository scan 误报面并改善仓库卫生
+- 移除 tracked runtime config artifacts：`translator_config.json`、`config_backups/*.json`、旧 `test_autosave.py` 和 `API_AUTO_SAVE.txt`
 - 新增 `scripts/manual_tests/`，迁移旧手工测试脚本并保留根目录兼容入口
 - 移除手工脚本和工具脚本中的明文 Gemini API Key，统一改为环境变量读取
 - 新增 `run_manual_tests.bat`、GitHub Actions CI、开发依赖与 pytest 标记配置
