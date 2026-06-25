@@ -8,7 +8,7 @@
 - 新增 `controllers.batch_task` 与 `controllers.batch_controller`，统一批量任务状态、错误记录、输出路径、旧队列兼容转换、下一任务选择、队列状态统计和 silent-loading 判断
 - 新增 `providers/` adapter 基础层，包含统一 request/response/error 类型、OpenAI-compatible/Gemini/Claude provider timeout 处理、从现有 APIConfig/custom-local-model 设置构造 adapter 的工厂函数，以及兼容 `translation_engine.py` 当前 tuple 返回值的 engine bridge
 - `translation_engine.py` 非流式 OpenAI / DeepSeek / LM Studio / custom-local 调用已接入 OpenAI-compatible adapter bridge，并新增 `timeout_seconds` 配置传递
-- 新增 `docs/upgrade-plan.md`，记录稳定性、controller 下沉、Provider Adapter、批量任务与发布化路线
+- 新增 `docs/upgrade-plan.md` 与 `docs/upgrade-progress.md`，记录稳定性、controller 下沉、Provider Adapter、批量任务路线、当前进度和每次实施必须更新进度的规则
 - 新增 `tests/test_translation_run_config.py`、`tests/test_run_guard.py`、`tests/test_gui_translation_adapter.py`、`tests/test_batch_task.py`、`tests/test_batch_controller.py`、`tests/test_provider_base.py`、`tests/test_openai_compatible_provider.py`、`tests/test_openai_compatible_factory.py`、`tests/test_gemini_provider.py`、`tests/test_claude_provider.py`、`tests/test_engine_bridge.py` 与 `tests/test_translation_engine_adapter_bridge.py`，覆盖运行配置、停止保护、GUI adapter、批量任务状态、批量队列控制、Provider timeout/factory 默认值、Gemini/Claude timeout 映射、engine bridge 和 TranslationEngine 接入行为
 - 新增 `scripts/manual_tests/`，迁移旧手工测试脚本并保留根目录兼容入口
 - 移除手工脚本和工具脚本中的明文 Gemini API Key，统一改为环境变量读取
