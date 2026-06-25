@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- 新增 `controllers.translation_run_config`，为后台翻译线程提供不可变运行配置快照，后续用于移除 worker 对 Tk 变量的直接读取
+- 新增 `docs/upgrade-plan.md`，记录稳定性、controller 下沉、Provider Adapter、批量任务与发布化路线
+- 新增 `tests/test_translation_run_config.py`，覆盖风格提示、并发上下文判断和 GUI 值防御性转换
 - 新增 `scripts/manual_tests/`，迁移旧手工测试脚本并保留根目录兼容入口
 - 移除手工脚本和工具脚本中的明文 Gemini API Key，统一改为环境变量读取
 - 新增 `run_manual_tests.bat`、GitHub Actions CI、开发依赖与 pytest 标记配置
