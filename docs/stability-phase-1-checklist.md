@@ -1,5 +1,8 @@
 # Stability Phase 1 Checklist
 
+> Persistent progress source: [`docs/upgrade-progress.md`](upgrade-progress.md).  
+> Every future implementation step must update `docs/upgrade-progress.md` together with this checklist.
+
 ## Landed in this branch
 
 - [x] Create `controllers/` as a GUI-free orchestration layer.
@@ -23,6 +26,7 @@
 - [x] Add `timeout_seconds` to APIConfig, API config serialization and config loading.
 - [x] Add unit tests for provider timeout coercion, adapter calls, factory defaults, Gemini/Claude timeout mapping, engine bridge behavior and TranslationEngine bridge integration.
 - [x] Add upgrade roadmap documentation.
+- [x] Add persistent upgrade/progress tracker at `docs/upgrade-progress.md`.
 
 ## Next implementation steps
 
