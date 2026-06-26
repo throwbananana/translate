@@ -13,7 +13,8 @@
 - [x] Add `TranslationRunGuard` to reject stale worker writes after stop/cancel.
 - [x] Add unit tests for run guard behavior.
 - [x] Add GUI-facing adapter helpers to read Tk-style values on the GUI thread, start guarded runs, and skip stale worker UI updates.
-- [x] Add unit tests for GUI translation adapter helpers.
+- [x] Add `schedule_guarded_gui_update(...)` for Tk `root.after(...)` callbacks so queued UI writes re-check the active run at execution time.
+- [x] Add unit tests for GUI translation adapter helpers, including scheduled stale callback rejection.
 - [x] Add `BatchTaskRecord` and normalized batch task statuses.
 - [x] Add `BatchController` to normalize queues, select next runnable tasks, update task statuses, cancel pending tasks and serialize back to legacy dicts.
 - [x] Add unit tests for legacy batch queue normalization, batch state transitions and silent-loading decisions.
@@ -32,14 +33,16 @@
 - [x] Remove tracked patch mbox artifacts that could trigger secret scans.
 - [x] Remove tracked historical GUI fix scripts, patch bundle scripts and GUI backup artifact.
 - [x] Remove tracked runtime config, config backup and legacy autosave artifacts.
+- [x] Confirm CI and `python-tests` are green after the secrets scan repair.
 
 ## Next implementation steps
 
-- [ ] Confirm latest CI secrets job after cleanup changes.
+- [ ] Confirm latest CI after the guarded scheduler helper commits.
 - [ ] Wire `start_guarded_translation_run(...)` into `BookTranslatorGUI.start_translation()`.
 - [ ] Pass the config snapshot into `translate_text()` and `translate_segment()`.
 - [ ] Stop reading Tk variables from background worker code.
-- [ ] Use `guarded_gui_update(...)` or `should_apply_gui_update(...)` before every worker UI write-back.
+- [ ] Replace run-owned `root.after(...)` writes with `schedule_guarded_gui_update(...)`.
+- [ ] Use `guarded_gui_update(...)` or `should_apply_gui_update(...)` before any direct worker UI write-back.
 - [ ] Adopt `BatchController` in GUI batch queue loading/saving and `process_next_batch_file()`.
 - [ ] Make `load_file_content(..., silent=True)` the default for batch processing.
 - [ ] Evaluate whether `_stream_openai_compatible(...)` should be adapted or kept as direct SDK logic for now.
