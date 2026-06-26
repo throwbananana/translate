@@ -11,7 +11,7 @@ from providers.engine_bridge import (
 
 pytestmark = pytest.mark.unit
 
-DUMMY_API_KEY = "unit" + "-test"
+DUMMY_KEY = "unit" + "-test"
 
 
 class FakeCompletions:
@@ -52,7 +52,7 @@ def test_build_translation_system_instruction_keeps_glossary_prefix():
 
 def test_translate_with_openai_compatible_config_returns_engine_tuple_shape():
     config = SimpleNamespace(
-        api_key=DUMMY_API_KEY,
+        api_key=DUMMY_KEY,  # pragma: allowlist secret
         model="gpt-test",
         base_url="https://example.test/v1",
         temperature=0.3,
@@ -96,6 +96,6 @@ def test_translate_with_custom_local_config_returns_engine_tuple_shape():
 
     assert translated == "桥接译文"
     assert model == "qwen-local"
-    assert client.kwargs["api_key"] == "lm-studio"
+    assert client.kwargs["api_key"] == "lm-studio"  # pragma: allowlist secret
     assert client.kwargs["base_url"] == "http://127.0.0.1:1234/v1"
     assert client.kwargs["timeout"] == 9.0
