@@ -16,6 +16,15 @@ from .gui_translation_adapter import (
 )
 from .run_guard import TranslationRunGuard
 from .translation_run_config import TranslationRunConfig, coerce_translation_run_config
+from .translation_worker_runtime import (
+    clamp_start_index,
+    ensure_segment_slots,
+    previous_segment_context,
+    progress_percent,
+    should_use_context,
+    translated_text_snapshot,
+    worker_count_for_run,
+)
 
 __all__ = [
     "TranslationRunConfig",
@@ -30,4 +39,11 @@ __all__ = [
     "guarded_gui_update",
     "cancel_guarded_translation_run",
     "should_load_batch_file_silently",
+    "clamp_start_index",
+    "worker_count_for_run",
+    "should_use_context",
+    "previous_segment_context",
+    "ensure_segment_slots",
+    "progress_percent",
+    "translated_text_snapshot",
 ]
