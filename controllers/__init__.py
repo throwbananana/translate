@@ -23,6 +23,7 @@ from .gui_translation_lifecycle import (
 from .gui_translation_workflow import (
     GuiTranslationWorkerCallbacks,
     build_guarded_translation_events,
+    run_guarded_gui_translation_lifecycle,
     run_guarded_gui_translation_worker,
 )
 from .run_guard import TranslationRunGuard
@@ -58,6 +59,7 @@ __all__ = [
     "run_translation_worker",
     "build_guarded_translation_events",
     "run_guarded_gui_translation_worker",
+    "run_guarded_gui_translation_lifecycle",
     "coerce_translation_run_config",
     "build_run_config_from_gui_state",
     "start_guarded_translation_run",
