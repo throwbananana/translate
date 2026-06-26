@@ -90,7 +90,7 @@ def test_guarded_gui_translation_worker_skips_queued_ui_updates_after_cancel():
         callbacks=_callbacks(statuses, progress, snapshots),
         snapshot_every=1,
     )
-    guard.cancel_run(run_id)
+    assert guard.cancel_current() == run_id
     scheduler.drain()
 
     assert statuses == []
