@@ -9,8 +9,8 @@
 - Pull request: `#2` — `Refactor: add stability phase controller groundwork`
 - Base branch: `main`
 - Last recorded progress date: `2026-06-25`
-- Current head: `eccb877bb89cfae370d18297ea2e8747ba846701`
-- Test status: CI tests and lint passed on the latest inspected pre-cleanup head. The repository scan job still failed before runtime config cleanup. A new CI run for the current head still needs confirmation.
+- Current head: `255ab9a69ff2bc9c95161eb2184a9e7d09970a1f`
+- Test status: CI tests and lint pass on inspected heads, but the repository scan job still fails. The secrets job now uploads `detect-secrets.log` to make the next failure actionable.
 - Merge guidance: use **Squash merge** because this branch contains many process commits.
 
 ## 1. Upgrade objective
@@ -29,12 +29,12 @@ The project is already feature-rich, but the main risks are runtime stability an
 
 | Area | Progress | Notes |
 |---|---:|---|
-| Overall upgrade plan | ~54% | Provider adapter wiring is mostly complete; GUI rewiring is still pending; repository hygiene cleanup has removed config/runtime artifacts. |
+| Overall upgrade plan | ~55% | Provider adapter wiring is mostly complete; GUI rewiring is still pending; repository hygiene cleanup has removed config/runtime artifacts and CI diagnostics were improved. |
 | Stability phase 1 foundations | ~92% | Run config, run guard, GUI adapter, batch controller, provider adapters and engine provider wiring are added. |
 | Provider timeout / adapter layer | ~95% | OpenAI-compatible, Gemini and Claude non-streaming engine paths are wired through adapters. Streaming path still needs separate evaluation. |
 | GUI thread-safety integration | ~35% | Helper layer exists; `book_translator_gui.pyw` is not rewired yet. |
 | Batch silent/resumable flow | ~55% | `BatchTaskRecord` and `BatchController` exist; GUI batch flow is not rewired yet. |
-| CI confirmation | ~65% | Tests and lint passed before the latest cleanup. Repository scan needs rerun confirmation on current head. |
+| CI confirmation | ~65% | Tests and lint pass on inspected heads. Repository scan still needs confirmation; detect-secrets logs are now uploaded as artifacts. |
 
 ## 3. Completed work
 
@@ -142,17 +142,18 @@ Cleanup completed:
 - Removed legacy autosave artifacts:
   - `test_autosave.py`
   - `API_AUTO_SAVE.txt`
+- Updated CI secrets job to tee `detect-secrets-hook` output to `detect-secrets.log` and upload that log as an artifact.
 
 Not completed:
 
 - Need CI confirmation for the current head.
-- If the scan still fails, fetch the latest job logs and inspect the exact flagged path/line.
+- If the scan still fails, download/read `detect-secrets-log` artifact and fix the exact flagged path/line.
 
 ## 4. Remaining work backlog
 
 ### P0 — finish stability phase 1
 
-1. Confirm CI on the current head.
+1. Confirm CI on the current head; use uploaded `detect-secrets.log` if scan still fails.
 2. Rewire `book_translator_gui.pyw` translation start/stop path:
    - initialize `self.translation_run_guard = TranslationRunGuard()` or use adapter helper;
    - call `start_guarded_translation_run(...)` inside `start_translation()`;
@@ -271,10 +272,23 @@ Completed:
 - Removed legacy autosave root script and old autosave note artifact.
 - Reduced repository scan surface and improved repository hygiene.
 
+### 2026-06-25 — make repository scan failures diagnosable
+
+Changed files:
+
+- `.github/workflows/ci.yml`
+- `docs/upgrade-progress.md`
+
+Completed:
+
+- Changed the secrets job to pipe detect-secrets output through `tee detect-secrets.log`.
+- Added an always-run artifact upload for `detect-secrets.log`.
+- This does not weaken the scan; it keeps the job failing when the scan fails, but preserves actionable output.
+
 Tests:
 
-- Run: not run after this cleanup.
-- Required follow-up: confirm CI on current head.
+- Run: not run after this CI diagnostics update.
+- Required follow-up: confirm CI on current head and inspect `detect-secrets-log` artifact if the scan still fails.
 
 ## 6. Mandatory update rule for future implementation
 
