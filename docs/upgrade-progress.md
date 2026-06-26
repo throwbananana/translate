@@ -9,7 +9,7 @@
 - Pull request: `#2` — `Refactor: add stability phase controller groundwork`
 - Base branch: `main`
 - Last recorded progress date: `2026-06-26`
-- Last green CI-confirmed head before this update: `5cf77df39cb221b6007e72d8a747341773afe6fe`
+- Last green CI-confirmed head before this update: `aea7271e05cc9674763d387ce2fe2d84e35f4d6f`
 - Latest implementation commits before this tracker update:
   - `1598320e154a8e8dab15d2799b6db693a45cdaf0` — add guarded GUI translation workflow adapter and tests
   - `db1d5079f21952f5f3505fb67d082a4d3b55e62a` — export guarded GUI translation workflow adapter
@@ -28,7 +28,13 @@
   - `b67bf794f3a848eaf857d3a04081133f91c8bbe1` — add guarded lifecycle workflow helper
   - `605fa47b558a6d1be8a0474a9dad9a50264e0a7e` — export guarded lifecycle workflow helper
   - `a93eff72d9936b5464ee5ac867b11733cb510b02` — cover guarded lifecycle workflow helper in tests
-- Test status: CI and `python-tests` passed on `5cf77df39cb221b6007e72d8a747341773afe6fe`, confirming the pure GUI lifecycle helper layer. The latest guarded-lifecycle-workflow code head `a93eff72d9936b5464ee5ac867b11733cb510b02` has `CI` and `python-tests` in progress and still needs confirmation.
+  - `c9b2bac92e2cb0742a6f30cab1e3a9624f7c2d02` — record guarded lifecycle workflow progress
+  - `f42830605e5009caae8338d849d8792fbf4f43e6` — add guarded lifecycle workflow checklist item
+  - `aea7271e05cc9674763d387ce2fe2d84e35f4d6f` — mark guarded lifecycle workflow docs head
+  - `8203a16b178ce4d3c4515ada2121882e12bbdd40` — add guarded final GUI update helper
+  - `ad31ae9ce8f75ac0d4b10ef785645daf771bd8af` — cover guarded final GUI update helper in tests
+  - `726dd4cdaeb3166f9872358c513f0d8af93edaac` — export guarded final GUI update helpers
+- Test status: CI and `python-tests` passed on `aea7271e05cc9674763d387ce2fe2d84e35f4d6f`, confirming the guarded lifecycle workflow helper/docs head. The latest guarded-final-update code head `726dd4cdaeb3166f9872358c513f0d8af93edaac` still needs CI confirmation.
 - Merge guidance: use **Squash merge** because this branch contains many process commits.
 
 ## 1. Upgrade objective
@@ -47,12 +53,12 @@ The project is already feature-rich, but the main risks are runtime stability an
 
 | Area | Progress | Notes |
 |---|---:|---|
-| Overall upgrade plan | ~65% | Provider adapter wiring is mostly complete; controller-side translation worker orchestration, guarded GUI workflow adapter, GUI lifecycle state helpers, and a combined guarded lifecycle workflow entry now exist. Direct `book_translator_gui.pyw` wiring is still pending. |
-| Stability phase 1 foundations | ~98% | Run config, run guard, GUI adapter, guarded GUI workflow adapter, GUI lifecycle helpers, batch controller, provider adapters, worker runtime helpers, worker orchestrator and engine provider wiring are added. Latest combined workflow helper head still needs CI confirmation. |
+| Overall upgrade plan | ~66% | Provider adapter wiring is mostly complete; controller-side translation worker orchestration, guarded GUI workflow/lifecycle helpers, combined worker finalization, and final guarded GUI update helpers now exist. Direct `book_translator_gui.pyw` wiring is still pending. |
+| Stability phase 1 foundations | ~98% | Run config, run guard, GUI adapter, guarded GUI workflow/lifecycle helpers, batch controller, provider adapters, worker runtime helpers, worker orchestrator and engine provider wiring are added. Latest guarded-final-update head still needs CI confirmation. |
 | Provider timeout / adapter layer | ~95% | OpenAI-compatible, Gemini and Claude non-streaming engine paths are wired through adapters. Streaming path still needs separate evaluation. |
-| GUI thread-safety integration | ~60% | Helper layer can snapshot config, guard direct/queued UI writes, compute worker-loop decisions without Tk reads, run the worker loop through injected callbacks, expose a GUI-facing guarded workflow entry, plan/finalize GUI run state without widgets, and now return a single finalized `GuiTranslationFinishState` from the worker path. `book_translator_gui.pyw` still needs wiring. |
+| GUI thread-safety integration | ~63% | Helper layer can snapshot config, guard direct/queued UI writes, compute worker-loop decisions without Tk reads, run/finalize workers through injected callbacks, and now safely finish the run only after the final GUI state is applied. `book_translator_gui.pyw` still needs wiring. |
 | Batch silent/resumable flow | ~55% | `BatchTaskRecord` and `BatchController` exist; GUI batch flow is not rewired yet. |
-| CI confirmation | ~90% | Last confirmed green head is `5cf77df39cb221b6007e72d8a747341773afe6fe`; latest guarded-lifecycle-workflow head `a93eff72d9936b5464ee5ac867b11733cb510b02` is in progress. |
+| CI confirmation | ~90% | Last confirmed green head is `aea7271e05cc9674763d387ce2fe2d84e35f4d6f`; latest guarded-final-update head `726dd4cdaeb3166f9872358c513f0d8af93edaac` still needs CI confirmation. |
 
 ## 3. Completed work
 
@@ -79,9 +85,10 @@ Completed behavior:
 - `TranslationRunGuard` for rejecting stale worker results after stop/cancel.
 - GUI-facing adapter helpers for reading Tk-style values, starting guarded translation runs, checking worker UI writes and cancelling the active run.
 - `schedule_guarded_gui_update(...)` for queued Tk `root.after(...)` updates.
+- `guarded_final_gui_update(...)` and `schedule_guarded_final_gui_update(...)`, so the final GUI state can be applied and then finish the active run exactly once.
 - `translation_worker_runtime` helpers for resume clamping, worker count, context decisions, progress calculation and translated text snapshots.
 - `translation_worker_orchestrator` for the serial/concurrent translation worker loop through injected callbacks.
-- `gui_translation_workflow` adapter that composes `TranslationRunGuard`, `schedule_guarded_gui_update(...)`, and `run_translation_worker(...)` into one GUI-facing entry point.
+- `gui_translation_workflow` adapter that composes `TranslationRunGuard`, guarded scheduling and `run_translation_worker(...)` into GUI-facing entry points.
 - `run_guarded_gui_translation_lifecycle(...)`, which runs the guarded worker and returns a finalized `GuiTranslationFinishState` for thinner `book_translator_gui.pyw` migration.
 - `gui_translation_lifecycle` helpers that plan legacy GUI start state, decide whether to resume/reset segment state, and finalize worker results into translated text, failed-segment records, progress/status, completion-hook decisions and cache-clearing decisions.
 - `BatchTaskRecord` and `BatchController` for normalized batch queue state.
@@ -136,14 +143,13 @@ Added focused unit tests:
 
 Recent test additions/fixes:
 
-- `tests/test_gui_translation_adapter.py` covers scheduled stale callback rejection.
+- `tests/test_gui_translation_adapter.py` covers scheduled stale callback rejection, final guarded GUI update, final guarded scheduling, cancellation before final callback, and stale final update rejection.
 - `tests/test_translation_worker_runtime.py` covers runtime helper behavior.
 - `tests/test_translation_worker_orchestrator.py` covers serial context, parallel no-context behavior, resume, failure pause, cancellation stop, progress and snapshot events.
 - `tests/test_gui_translation_workflow.py` covers guarded GUI workflow scheduling, queued update skip after cancellation, stale-run refusal, combined lifecycle finalization, and stale combined lifecycle finalization.
 - `tests/test_gui_translation_lifecycle.py` covers resume/reset start-state decisions, success finalization, failed-segment derivation, stopped-run completion blocking and paused-run completion blocking.
-- `8f233ad5329bbc63d7c6f979bac8871d33389278` fixes the guarded workflow cancellation test to use the real `TranslationRunGuard.cancel_current()` API.
-- CI and `python-tests` passed on `5cf77df39cb221b6007e72d8a747341773afe6fe`, confirming the lifecycle helper layer.
-- Latest guarded-lifecycle-workflow head `a93eff72d9936b5464ee5ac867b11733cb510b02` still needs CI confirmation.
+- CI and `python-tests` passed on `aea7271e05cc9674763d387ce2fe2d84e35f4d6f`, confirming the guarded lifecycle workflow/docs head.
+- Latest guarded-final-update head `726dd4cdaeb3166f9872358c513f0d8af93edaac` still needs CI confirmation.
 
 Recommended focused test command:
 
@@ -155,7 +161,7 @@ py -m pytest tests/test_translation_run_config.py tests/test_run_guard.py tests/
 
 ### P0 — finish stability phase 1
 
-1. Confirm CI on latest guarded-lifecycle-workflow head `a93eff72d9936b5464ee5ac867b11733cb510b02`.
+1. Confirm CI on latest guarded-final-update head `726dd4cdaeb3166f9872358c513f0d8af93edaac`.
 2. Rewire `book_translator_gui.pyw` translation start/stop path:
    - initialize `self.translation_run_guard = TranslationRunGuard()` or use adapter helper;
    - call `start_guarded_translation_run(...)` inside `start_translation()`;
@@ -163,7 +169,7 @@ py -m pytest tests/test_translation_run_config.py tests/test_run_guard.py tests/
    - pass the guarded run/config snapshot into `translate_text()`;
    - pass config into `translate_segment()`;
    - replace the body of `translate_text()` with a thin adapter around `run_guarded_gui_translation_lifecycle(...)`;
-   - apply the returned `GuiTranslationFinishState` to GUI state/widgets in one guarded callback;
+   - apply the returned `GuiTranslationFinishState` to GUI state/widgets via `schedule_guarded_final_gui_update(...)`;
    - stop background worker reads of `self.concurrency_var`, `self.target_language_var`, `self.style_var`.
 3. Guard worker UI writes through guarded workflow events.
 4. Rewire GUI batch processing through `BatchController` and `load_file_content(..., silent=True)`.
@@ -228,6 +234,10 @@ Added `controllers/gui_translation_lifecycle.py` plus `tests/test_gui_translatio
 ### 2026-06-26 — add guarded lifecycle workflow helper
 
 Added `run_guarded_gui_translation_lifecycle(...)`, exported it from `controllers`, and covered it in `tests/test_gui_translation_workflow.py`. The remaining GUI migration can now call one worker helper that returns finalized GUI state.
+
+### 2026-06-26 — add guarded final GUI update helpers
+
+Added `guarded_final_gui_update(...)` and `schedule_guarded_final_gui_update(...)`. These helpers let the GUI apply the final translation state and then finish the active run exactly once, while still rejecting stale/cancelled final updates.
 
 ## 6. Mandatory update rule for future implementation
 
