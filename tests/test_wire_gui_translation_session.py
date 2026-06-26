@@ -2,7 +2,11 @@ import textwrap
 
 import pytest
 
-from tools.wire_gui_translation_session import apply_wiring_patch
+from tools.wire_gui_translation_session import (
+    TRANSLATE_SEGMENT_LEGACY,
+    TRANSLATE_TEXT_LEGACY,
+    apply_wiring_patch,
+)
 
 
 pytestmark = pytest.mark.unit
@@ -87,13 +91,18 @@ BASE_GUI_SNIPPET = textwrap.dedent(
     '''
 )
 
+BASE_GUI_SNIPPET += "\n" + TRANSLATE_TEXT_LEGACY + "\n" + TRANSLATE_SEGMENT_LEGACY
+
 
 def test_apply_wiring_patch_adds_import_state_session_start_and_stop_cancellation():
     patched = apply_wiring_patch(BASE_GUI_SNIPPET)
 
     assert "from controllers import (" in patched
+    assert "GuiTranslationWorkerCallbacks" in patched
     assert "TranslationRunGuard" in patched
     assert "cancel_gui_translation_session" in patched
+    assert "run_guarded_gui_translation_lifecycle" in patched
+    assert "schedule_gui_translation_final_state" in patched
     assert "start_gui_translation_session" in patched
     assert "self.translation_run_guard = TranslationRunGuard()" in patched
     assert "self.current_translation_session = None" in patched
@@ -103,6 +112,20 @@ def test_apply_wiring_patch_adds_import_state_session_start_and_stop_cancellatio
     assert "self.progress_var.set(start_state.initial_progress)" in patched
     assert "args=(session,)" in patched
     assert "cancel_gui_translation_session(self.translation_run_guard)" in patched
+
+
+def test_apply_wiring_patch_rewrites_worker_lifecycle_and_segment_config_snapshot():
+    patched = apply_wiring_patch(BASE_GUI_SNIPPET)
+
+    assert "def translate_text(self, session=None):" in patched
+    assert "callbacks = GuiTranslationWorkerCallbacks(" in patched
+    assert "run_guarded_gui_translation_lifecycle(" in patched
+    assert "schedule_gui_translation_final_state(" in patched
+    assert "def _apply_guarded_translation_finish_state(self, finish_state):" in patched
+    assert "def translate_segment(self, api_type, text, context=None, config=None):" in patched
+    assert "target_language = config.target_language if config is not None else self.get_target_language()" in patched
+    assert "style_guide = config.style_prompt" in patched
+    assert "self.concurrency_var.get()" not in patched
 
 
 def test_apply_wiring_patch_removes_legacy_start_translation_blocks():
@@ -126,7 +149,8 @@ def test_apply_wiring_patch_upgrades_legacy_controller_import():
 
     patched = apply_wiring_patch(legacy_imported)
 
-    assert "start_gui_translation_session" in patched
+    assert "GuiTranslationWorkerCallbacks" in patched
+    assert "run_guarded_gui_translation_lifecycle" in patched
     assert patched.count("from controllers import (") == 1
 
 
@@ -138,6 +162,8 @@ def test_apply_wiring_patch_is_idempotent():
     assert twice.count("from controllers import (") == 1
     assert twice.count("self.translation_run_guard = TranslationRunGuard()") == 1
     assert twice.count("session = start_gui_translation_session(") == 1
+    assert twice.count("run_guarded_gui_translation_lifecycle(") == 1
+    assert twice.count("def translate_segment(self, api_type, text, context=None, config=None):") == 1
     assert twice.count("cancel_gui_translation_session(self.translation_run_guard)") == 1
 
 
