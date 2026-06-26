@@ -16,9 +16,11 @@
 - [x] Add `schedule_guarded_gui_update(...)` for Tk `root.after(...)` callbacks so queued UI writes re-check the active run at execution time.
 - [x] Add pure `translation_worker_runtime` helpers for resume clamping, worker count, context selection, segment-slot extension, progress and translated-text snapshots.
 - [x] Add `translation_worker_orchestrator` to run the serial/concurrent translation worker loop through injected callbacks without tkinter dependencies.
+- [x] Add `gui_translation_workflow` to compose the run guard, guarded scheduler and worker orchestrator into one GUI-facing workflow adapter.
 - [x] Add unit tests for GUI translation adapter helpers, including scheduled stale callback rejection.
 - [x] Add unit tests for worker runtime helper behavior before GUI rewiring.
 - [x] Add unit tests for worker orchestrator behavior: serial context, parallel no-context, resume, failure pause, cancellation stop, progress and snapshots.
+- [x] Add unit tests for guarded GUI workflow behavior: normal scheduled updates, queued update skip after cancel, and stale-run refusal.
 - [x] Add `BatchTaskRecord` and normalized batch task statuses.
 - [x] Add `BatchController` to normalize queues, select next runnable tasks, update task statuses, cancel pending tasks and serialize back to legacy dicts.
 - [x] Add unit tests for legacy batch queue normalization, batch state transitions and silent-loading decisions.
@@ -41,13 +43,13 @@
 
 ## Next implementation steps
 
-- [ ] Confirm latest CI after the worker orchestrator commits.
+- [ ] Confirm latest CI after the guarded GUI workflow commits.
 - [ ] Wire `start_guarded_translation_run(...)` into `BookTranslatorGUI.start_translation()`.
-- [ ] Replace `BookTranslatorGUI.translate_text()` body with a thin adapter around `run_translation_worker(...)`.
+- [ ] Replace `BookTranslatorGUI.translate_text()` body with a thin adapter around `run_guarded_gui_translation_worker(...)`.
 - [ ] Pass the config snapshot into `translate_segment()`.
 - [ ] Stop reading Tk variables from background worker code.
-- [ ] Replace run-owned `root.after(...)` writes with `schedule_guarded_gui_update(...)`.
-- [ ] Use `guarded_gui_update(...)` or `should_apply_gui_update(...)` before any direct worker UI write-back.
+- [ ] Replace run-owned `root.after(...)` writes with guarded workflow events.
+- [ ] Use `guarded_gui_update(...)` or `should_apply_gui_update(...)` before any remaining direct worker UI write-back.
 - [ ] Adopt `BatchController` in GUI batch queue loading/saving and `process_next_batch_file()`.
 - [ ] Make `load_file_content(..., silent=True)` the default for batch processing.
 - [ ] Evaluate whether `_stream_openai_compatible(...)` should be adapted or kept as direct SDK logic for now.
