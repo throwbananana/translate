@@ -7,7 +7,7 @@ from translation_engine import APIConfig, APIProvider, TranslationEngine
 
 pytestmark = pytest.mark.unit
 
-DUMMY_API_KEY = "unit" + "-test"
+DUMMY_KEY = "unit" + "-test"
 
 
 class FakeGeminiProvider:
@@ -40,7 +40,7 @@ def test_gemini_path_uses_provider_adapter(monkeypatch):
     engine = TranslationEngine()
     config = APIConfig(
         provider=APIProvider.GEMINI,
-        api_key=DUMMY_API_KEY,
+        api_key=DUMMY_KEY,  # pragma: allowlist secret
         model="gemini-test",
         temperature=0.4,
         max_tokens=1234,
@@ -54,7 +54,7 @@ def test_gemini_path_uses_provider_adapter(monkeypatch):
     assert translated == "Gemini bridge text"
     assert model == "gemini-test"
     assert provider_kwargs == {
-        "api_key": DUMMY_API_KEY,
+        "api_key": DUMMY_KEY,  # pragma: allowlist secret
         "model": "gemini-test",
         "timeout_seconds": 17,
     }
@@ -74,7 +74,7 @@ def test_claude_path_uses_provider_adapter(monkeypatch):
     engine = TranslationEngine()
     config = APIConfig(
         provider=APIProvider.CLAUDE,
-        api_key=DUMMY_API_KEY,
+        api_key=DUMMY_KEY,  # pragma: allowlist secret
         model="claude-test",
         temperature=0.1,
         max_tokens=2222,
@@ -88,7 +88,7 @@ def test_claude_path_uses_provider_adapter(monkeypatch):
     assert translated == "Claude bridge text"
     assert model == "claude-test"
     assert provider_kwargs == {
-        "api_key": DUMMY_API_KEY,
+        "api_key": DUMMY_KEY,  # pragma: allowlist secret
         "model": "claude-test",
         "timeout_seconds": 25,
     }
