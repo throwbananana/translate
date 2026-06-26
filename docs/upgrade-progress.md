@@ -8,9 +8,10 @@
 - Working branch: `upgrade/stability-phase-1`
 - Pull request: `#2` — `Refactor: add stability phase controller groundwork`
 - Base branch: `main`
-- Last recorded progress date: `2026-06-25`
-- Current head: `255ab9a69ff2bc9c95161eb2184a9e7d09970a1f`
-- Test status: CI tests and lint pass on inspected heads, but the repository scan job still fails. The secrets job now uploads `detect-secrets.log` to make the next failure actionable.
+- Last recorded progress date: `2026-06-26`
+- Last inspected PR head before this tracker update: `b28a38e5e5ddf75ae9bd98d1a5ccdc70d3121441`
+- Latest CI allowlist fix commit before this tracker update: `55daf6ffd084c0e27c9a6c8656c57324ba016051`
+- Test status: `python-tests` passes; CI `tests` and `lint` pass on the inspected head. CI `secrets` still failed on the inspected head, with the uploaded `detect-secrets-log` showing only reviewed LM Studio placeholder lines in `book_translator_gui.pyw:116` and `config_manager.py:64`.
 - Merge guidance: use **Squash merge** because this branch contains many process commits.
 
 ## 1. Upgrade objective
@@ -29,12 +30,12 @@ The project is already feature-rich, but the main risks are runtime stability an
 
 | Area | Progress | Notes |
 |---|---:|---|
-| Overall upgrade plan | ~55% | Provider adapter wiring is mostly complete; GUI rewiring is still pending; repository hygiene cleanup has removed config/runtime artifacts and CI diagnostics were improved. |
+| Overall upgrade plan | ~56% | Provider adapter wiring is mostly complete; CI scan failure is now narrowed to reviewed local placeholder lines; GUI rewiring is still pending. |
 | Stability phase 1 foundations | ~92% | Run config, run guard, GUI adapter, batch controller, provider adapters and engine provider wiring are added. |
 | Provider timeout / adapter layer | ~95% | OpenAI-compatible, Gemini and Claude non-streaming engine paths are wired through adapters. Streaming path still needs separate evaluation. |
 | GUI thread-safety integration | ~35% | Helper layer exists; `book_translator_gui.pyw` is not rewired yet. |
 | Batch silent/resumable flow | ~55% | `BatchTaskRecord` and `BatchController` exist; GUI batch flow is not rewired yet. |
-| CI confirmation | ~65% | Tests and lint pass on inspected heads. Repository scan still needs confirmation; detect-secrets logs are now uploaded as artifacts. |
+| CI confirmation | ~70% | `python-tests`, CI `tests`, and CI `lint` pass. CI `secrets` is being repaired by narrowing the reviewed placeholder allowlist and keeping `detect-secrets.log` uploaded. |
 
 ## 3. Completed work
 
@@ -143,11 +144,13 @@ Cleanup completed:
   - `test_autosave.py`
   - `API_AUTO_SAVE.txt`
 - Updated CI secrets job to tee `detect-secrets-hook` output to `detect-secrets.log` and upload that log as an artifact.
+- Inspected the uploaded `detect-secrets-log` artifact for CI run `28209644495`; the remaining scan output pointed only to local LM Studio placeholder values.
+- Simplified the scan allowlist to a narrow substring rule for reviewed local placeholders and documented environment variable names.
 
 Not completed:
 
-- Need CI confirmation for the current head.
-- If the scan still fails, download/read `detect-secrets-log` artifact and fix the exact flagged path/line.
+- Need CI confirmation after commit `55daf6ffd084c0e27c9a6c8656c57324ba016051` and this progress tracker update.
+- If the scan still fails, download/read `detect-secrets-log` again and fix the exact flagged path/line.
 
 ## 4. Remaining work backlog
 
@@ -289,6 +292,32 @@ Tests:
 
 - Run: not run after this CI diagnostics update.
 - Required follow-up: confirm CI on current head and inspect `detect-secrets-log` artifact if the scan still fails.
+
+### 2026-06-26 — inspect CI scan artifact and narrow placeholder allowlist
+
+Changed files:
+
+- `.github/workflows/ci.yml`
+- `docs/upgrade-progress.md`
+
+Completed:
+
+- Confirmed PR `#2` is still open and mergeable.
+- Confirmed current inspected CI state: `python-tests`, CI `tests`, and CI `lint` passed; CI `secrets` failed.
+- Downloaded and inspected `detect-secrets-log` from run `28209644495`.
+- Found the remaining scan failure points were only `book_translator_gui.pyw:116` and `config_manager.py:64`, both caused by the reviewed local LM Studio placeholder value `lm-studio`.
+- Replaced the previous complex POSIX-style `--exclude-lines` pattern with a simpler narrow allowlist: `pragma: allowlist secret|lm-studio|BOOK_TRANSLATOR_ADMIN_PASSWORD|ZLIBRARY_PASSWORD`.
+- Updated this tracker so the next continuation starts from the exact CI failure state.
+
+Tests:
+
+- Not run locally in this environment.
+- Required follow-up: wait for the new GitHub Actions run on the latest head; if `secrets` still fails, inspect the newly uploaded `detect-secrets-log` artifact.
+
+Known risks:
+
+- The workflow allowlist should stay narrow. Do not broaden it to ignore all `api_key` fields or all password fields.
+- The next real implementation step is still GUI rewiring, not additional provider adapter work.
 
 ## 6. Mandatory update rule for future implementation
 
