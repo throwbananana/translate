@@ -16,6 +16,12 @@ from .gui_translation_adapter import (
 )
 from .run_guard import TranslationRunGuard
 from .translation_run_config import TranslationRunConfig, coerce_translation_run_config
+from .translation_worker_orchestrator import (
+    SegmentWorkResult,
+    TranslationWorkerEvents,
+    TranslationWorkerResult,
+    run_translation_worker,
+)
 from .translation_worker_runtime import (
     clamp_start_index,
     ensure_segment_slots,
@@ -32,6 +38,10 @@ __all__ = [
     "GuardedTranslationRun",
     "BatchController",
     "BatchQueueSnapshot",
+    "SegmentWorkResult",
+    "TranslationWorkerEvents",
+    "TranslationWorkerResult",
+    "run_translation_worker",
     "coerce_translation_run_config",
     "build_run_config_from_gui_state",
     "start_guarded_translation_run",
