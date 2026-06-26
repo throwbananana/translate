@@ -108,7 +108,7 @@ python config_manager.py         # Config manager self-test
 
 ## Configuration Structure (v2.1)
 
-```json
+```jsonc
 {
   "version": "2.1",
   "target_language": "中文",
@@ -116,12 +116,12 @@ python config_manager.py         # Config manager self-test
   "use_translation_memory": true,
   "use_glossary": true,
   "api_configs": {
-    "gemini": { "api_key": "", "model": "gemini-2.5-flash" },
-    "openai": { "api_key": "", "model": "gpt-3.5-turbo", "base_url": "" },
-    "claude": { "api_key": "", "model": "claude-3-haiku-20240307" },
-    "deepseek": { "api_key": "", "model": "deepseek-chat", "base_url": "https://api.deepseek.com/v1" },
-    "lm_studio": { "api_key": "lm-studio", "model": "qwen2.5-7b-instruct-1m", "base_url": "http://127.0.0.1:1234/v1" },
-    "custom": { "api_key": "", "model": "", "base_url": "" }
+    "gemini": { "api_key": "", "model": "gemini-2.5-flash" }, // pragma: allowlist secret
+    "openai": { "api_key": "", "model": "gpt-3.5-turbo", "base_url": "" }, // pragma: allowlist secret
+    "claude": { "api_key": "", "model": "claude-3-haiku-20240307" }, // pragma: allowlist secret
+    "deepseek": { "api_key": "", "model": "deepseek-chat", "base_url": "https://api.deepseek.com/v1" }, // pragma: allowlist secret
+    "lm_studio": { "api_key": "lm-studio", "model": "qwen2.5-7b-instruct-1m", "base_url": "http://127.0.0.1:1234/v1" }, // pragma: allowlist secret
+    "custom": { "api_key": "", "model": "", "base_url": "" } // pragma: allowlist secret
   },
   "custom_local_models": {}
 }
@@ -188,7 +188,7 @@ from translation_engine import TranslationEngine, APIConfig, APIProvider
 engine = TranslationEngine()
 engine.add_api_config('gemini', APIConfig(
     provider=APIProvider.GEMINI,
-    api_key='your-key',
+    api_key='your-key',  # pragma: allowlist secret
     model='gemini-2.5-flash'
 ))
 
