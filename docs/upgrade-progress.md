@@ -9,14 +9,15 @@
 - Pull request: `#2` — `Refactor: add stability phase controller groundwork`
 - Base branch: `main`
 - Last recorded progress date: `2026-06-26`
-- Last green CI-confirmed head before this update: `8036710c74e01429cb78c43f9675d430bd801e1a`
+- Last green CI-confirmed head before this update: `32f889024cf7c5fb77258ff58c6b45b2d8e3ee4f`
 - Latest implementation commits before this tracker update:
   - `1598320e154a8e8dab15d2799b6db693a45cdaf0` — add guarded GUI translation workflow adapter and tests
   - `db1d5079f21952f5f3505fb67d082a4d3b55e62a` — export guarded GUI translation workflow adapter
   - `188506b2ef32fd0fcfff83d5e9e5ce8ee15249f3` — record guarded GUI workflow adapter in progress docs
   - `978839ebf9de79cda74d46c98c5943a4e44ee62f` — include guarded GUI workflow in checklist
   - `8f233ad5329bbc63d7c6f979bac8871d33389278` — fix guarded GUI workflow test cancellation API
-- Test status: CI and `python-tests` passed on `8036710c74e01429cb78c43f9675d430bd801e1a`. On `978839ebf9de79cda74d46c98c5943a4e44ee62f`, CI passed but `python-tests` failed because the new test used a non-existent `cancel_run(...)` API. Commit `8f233ad5329bbc63d7c6f979bac8871d33389278` fixes the test to call `cancel_current()`; new CI runs are in progress.
+  - `32f889024cf7c5fb77258ff58c6b45b2d8e3ee4f` — record latest green guarded workflow CI status
+- Test status: CI and `python-tests` passed on `32f889024cf7c5fb77258ff58c6b45b2d8e3ee4f`. This confirms the guarded GUI workflow adapter and cancellation-test fix are green before starting the main `book_translator_gui.pyw` wiring step.
 - Merge guidance: use **Squash merge** because this branch contains many process commits.
 
 ## 1. Upgrade objective
@@ -35,12 +36,12 @@ The project is already feature-rich, but the main risks are runtime stability an
 
 | Area | Progress | Notes |
 |---|---:|---|
-| Overall upgrade plan | ~62% | Provider adapter wiring is mostly complete; controller-side translation worker orchestration and guarded GUI workflow adapter now exist; GUI main-file wiring is still pending. |
-| Stability phase 1 foundations | ~96% | Run config, run guard, GUI adapter, guarded GUI workflow adapter, batch controller, provider adapters, worker runtime helpers, worker orchestrator and engine provider wiring are added. |
+| Overall upgrade plan | ~63% | Provider adapter wiring is mostly complete; controller-side translation worker orchestration and guarded GUI workflow adapter are now CI-confirmed; GUI main-file wiring is still pending. |
+| Stability phase 1 foundations | ~97% | Run config, run guard, GUI adapter, guarded GUI workflow adapter, batch controller, provider adapters, worker runtime helpers, worker orchestrator and engine provider wiring are added and latest CI-confirmed. |
 | Provider timeout / adapter layer | ~95% | OpenAI-compatible, Gemini and Claude non-streaming engine paths are wired through adapters. Streaming path still needs separate evaluation. |
-| GUI thread-safety integration | ~53% | Helper layer can snapshot config, guard direct/queued UI writes, compute worker-loop decisions without Tk reads, run the worker loop through injected callbacks, and expose a GUI-facing guarded workflow entry. `book_translator_gui.pyw` still needs wiring. |
+| GUI thread-safety integration | ~54% | Helper layer can snapshot config, guard direct/queued UI writes, compute worker-loop decisions without Tk reads, run the worker loop through injected callbacks, and expose a GUI-facing guarded workflow entry; latest helper/tests are green. `book_translator_gui.pyw` still needs wiring. |
 | Batch silent/resumable flow | ~55% | `BatchTaskRecord` and `BatchController` exist; GUI batch flow is not rewired yet. |
-| CI confirmation | ~88% | Last fully green head is `8036710c74e01429cb78c43f9675d430bd801e1a`; latest test-fix commit is waiting for CI confirmation. |
+| CI confirmation | ~100% | CI and `python-tests` are green on latest checked head `32f889024cf7c5fb77258ff58c6b45b2d8e3ee4f`. |
 
 ## 3. Completed work
 
@@ -125,6 +126,7 @@ Recent test additions/fixes:
 - `tests/test_translation_worker_orchestrator.py` covers serial context, parallel no-context behavior, resume, failure pause, cancellation stop, progress and snapshot events.
 - `tests/test_gui_translation_workflow.py` covers guarded GUI workflow scheduling, queued update skip after cancellation, and stale-run refusal.
 - `8f233ad5329bbc63d7c6f979bac8871d33389278` fixes the guarded workflow cancellation test to use the real `TranslationRunGuard.cancel_current()` API.
+- CI and `python-tests` passed on `32f889024cf7c5fb77258ff58c6b45b2d8e3ee4f` after the guarded workflow adapter and cancellation-test fix.
 
 Recommended focused test command:
 
@@ -136,17 +138,16 @@ py -m pytest tests/test_translation_run_config.py tests/test_run_guard.py tests/
 
 ### P0 — finish stability phase 1
 
-1. Confirm CI on `8f233ad5329bbc63d7c6f979bac8871d33389278`.
-2. Rewire `book_translator_gui.pyw` translation start/stop path:
+1. Rewire `book_translator_gui.pyw` translation start/stop path:
    - initialize `self.translation_run_guard = TranslationRunGuard()` or use adapter helper;
    - call `start_guarded_translation_run(...)` inside `start_translation()`;
    - pass the guarded run/config snapshot into `translate_text()`;
    - pass config into `translate_segment()`;
    - replace the body of `translate_text()` with a thin adapter around `run_guarded_gui_translation_worker(...)`;
    - stop background worker reads of `self.concurrency_var`, `self.target_language_var`, `self.style_var`.
-3. Guard worker UI writes through guarded workflow events.
-4. Rewire GUI batch processing through `BatchController` and `load_file_content(..., silent=True)`.
-5. Evaluate streaming provider path.
+2. Guard worker UI writes through guarded workflow events.
+3. Rewire GUI batch processing through `BatchController` and `load_file_content(..., silent=True)`.
+4. Evaluate streaming provider path.
 
 ### P1 — controller extraction after P0
 
@@ -195,6 +196,10 @@ Added `GuiTranslationWorkerCallbacks`, `build_guarded_translation_events(...)`, 
 ### 2026-06-26 — fix guarded GUI workflow cancellation test
 
 Changed `tests/test_gui_translation_workflow.py` to call `TranslationRunGuard.cancel_current()` instead of the non-existent `cancel_run(...)` method.
+
+### 2026-06-26 — confirm guarded workflow CI
+
+Confirmed that both `CI` and `python-tests` completed successfully on head `32f889024cf7c5fb77258ff58c6b45b2d8e3ee4f`. This clears the previous checklist blocker and makes the next safe step the direct `book_translator_gui.pyw` guarded-run wiring.
 
 ## 6. Mandatory update rule for future implementation
 
