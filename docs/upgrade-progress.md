@@ -9,7 +9,7 @@
 - Pull request: `#2` — `Refactor: add stability phase controller groundwork`
 - Base branch: `main`
 - Last recorded progress date: `2026-06-26`
-- Last green CI-confirmed head before this update: `aea7271e05cc9674763d387ce2fe2d84e35f4d6f`
+- Last green CI-confirmed head before this update: `df436fdc9d6997b0c657a20b03de7b6fe2bf3720`
 - Latest implementation commits before this tracker update:
   - `1598320e154a8e8dab15d2799b6db693a45cdaf0` — add guarded GUI translation workflow adapter and tests
   - `db1d5079f21952f5f3505fb67d082a4d3b55e62a` — export guarded GUI translation workflow adapter
@@ -34,7 +34,12 @@
   - `8203a16b178ce4d3c4515ada2121882e12bbdd40` — add guarded final GUI update helper
   - `ad31ae9ce8f75ac0d4b10ef785645daf771bd8af` — cover guarded final GUI update helper in tests
   - `726dd4cdaeb3166f9872358c513f0d8af93edaac` — export guarded final GUI update helpers
-- Test status: CI and `python-tests` passed on `aea7271e05cc9674763d387ce2fe2d84e35f4d6f`, confirming the guarded lifecycle workflow helper/docs head. The latest guarded-final-update code head `726dd4cdaeb3166f9872358c513f0d8af93edaac` still needs CI confirmation.
+  - `0cecc675358a070302d8a8c927f8342fbffb860f` — record guarded final update progress
+  - `df436fdc9d6997b0c657a20b03de7b6fe2bf3720` — add guarded final update checklist item
+  - `31393d86152a3a323c03c2929f5dce94517935ce` — add GUI translation session helper
+  - `229f682a5e0694c1907c86651c62708f3c5b863d` — export GUI translation session helper
+  - `fa4d7a50c2a4d4ed2da9aaaa3080260333f6b51f` — cover GUI translation session helper in tests
+- Test status: CI and `python-tests` passed on `df436fdc9d6997b0c657a20b03de7b6fe2bf3720`, confirming the guarded final update helper/docs head. The latest GUI session helper code head `fa4d7a50c2a4d4ed2da9aaaa3080260333f6b51f` still needs CI confirmation.
 - Merge guidance: use **Squash merge** because this branch contains many process commits.
 
 ## 1. Upgrade objective
@@ -53,12 +58,12 @@ The project is already feature-rich, but the main risks are runtime stability an
 
 | Area | Progress | Notes |
 |---|---:|---|
-| Overall upgrade plan | ~66% | Provider adapter wiring is mostly complete; controller-side translation worker orchestration, guarded GUI workflow/lifecycle helpers, combined worker finalization, and final guarded GUI update helpers now exist. Direct `book_translator_gui.pyw` wiring is still pending. |
-| Stability phase 1 foundations | ~98% | Run config, run guard, GUI adapter, guarded GUI workflow/lifecycle helpers, batch controller, provider adapters, worker runtime helpers, worker orchestrator and engine provider wiring are added. Latest guarded-final-update head still needs CI confirmation. |
+| Overall upgrade plan | ~67% | Provider adapter wiring is mostly complete; controller-side translation worker orchestration, guarded GUI workflow/lifecycle helpers, final guarded updates and GUI session start/stop helpers now exist. Direct `book_translator_gui.pyw` wiring is still pending. |
+| Stability phase 1 foundations | ~99% | Run config, run guard, GUI adapter, guarded GUI workflow/lifecycle/session helpers, batch controller, provider adapters, worker runtime helpers, worker orchestrator and engine provider wiring are added. Latest GUI session helper head still needs CI confirmation. |
 | Provider timeout / adapter layer | ~95% | OpenAI-compatible, Gemini and Claude non-streaming engine paths are wired through adapters. Streaming path still needs separate evaluation. |
-| GUI thread-safety integration | ~63% | Helper layer can snapshot config, guard direct/queued UI writes, compute worker-loop decisions without Tk reads, run/finalize workers through injected callbacks, and now safely finish the run only after the final GUI state is applied. `book_translator_gui.pyw` still needs wiring. |
+| GUI thread-safety integration | ~66% | Helper layer can snapshot config, plan resume/reset state, guard direct/queued UI writes, compute worker-loop decisions without Tk reads, run/finalize workers through injected callbacks, finish the run after final GUI state is applied, and now expose one session object for GUI start/stop wiring. `book_translator_gui.pyw` still needs wiring. |
 | Batch silent/resumable flow | ~55% | `BatchTaskRecord` and `BatchController` exist; GUI batch flow is not rewired yet. |
-| CI confirmation | ~90% | Last confirmed green head is `aea7271e05cc9674763d387ce2fe2d84e35f4d6f`; latest guarded-final-update head `726dd4cdaeb3166f9872358c513f0d8af93edaac` still needs CI confirmation. |
+| CI confirmation | ~90% | Last confirmed green head is `df436fdc9d6997b0c657a20b03de7b6fe2bf3720`; latest GUI session helper head `fa4d7a50c2a4d4ed2da9aaaa3080260333f6b51f` still needs CI confirmation. |
 
 ## 3. Completed work
 
@@ -70,6 +75,7 @@ Completed files:
 - `controllers/translation_run_config.py`
 - `controllers/run_guard.py`
 - `controllers/gui_translation_adapter.py`
+- `controllers/gui_translation_session.py`
 - `controllers/translation_worker_runtime.py`
 - `controllers/translation_worker_orchestrator.py`
 - `controllers/gui_translation_workflow.py`
@@ -84,6 +90,7 @@ Completed behavior:
 - Centralized translation style prompt mapping.
 - `TranslationRunGuard` for rejecting stale worker results after stop/cancel.
 - GUI-facing adapter helpers for reading Tk-style values, starting guarded translation runs, checking worker UI writes and cancelling the active run.
+- `GuiTranslationSession` and helpers to start a guarded session, snapshot config, plan resume/reset state, cancel the active session and schedule final-state application.
 - `schedule_guarded_gui_update(...)` for queued Tk `root.after(...)` updates.
 - `guarded_final_gui_update(...)` and `schedule_guarded_final_gui_update(...)`, so the final GUI state can be applied and then finish the active run exactly once.
 - `translation_worker_runtime` helpers for resume clamping, worker count, context decisions, progress calculation and translated text snapshots.
@@ -126,6 +133,7 @@ Added focused unit tests:
 - `tests/test_translation_run_config.py`
 - `tests/test_run_guard.py`
 - `tests/test_gui_translation_adapter.py`
+- `tests/test_gui_translation_session.py`
 - `tests/test_translation_worker_runtime.py`
 - `tests/test_translation_worker_orchestrator.py`
 - `tests/test_gui_translation_workflow.py`
@@ -144,32 +152,33 @@ Added focused unit tests:
 Recent test additions/fixes:
 
 - `tests/test_gui_translation_adapter.py` covers scheduled stale callback rejection, final guarded GUI update, final guarded scheduling, cancellation before final callback, and stale final update rejection.
+- `tests/test_gui_translation_session.py` covers GUI session config snapshots, resume/reset planning, cancellation and final-state scheduling.
 - `tests/test_translation_worker_runtime.py` covers runtime helper behavior.
 - `tests/test_translation_worker_orchestrator.py` covers serial context, parallel no-context behavior, resume, failure pause, cancellation stop, progress and snapshot events.
 - `tests/test_gui_translation_workflow.py` covers guarded GUI workflow scheduling, queued update skip after cancellation, stale-run refusal, combined lifecycle finalization, and stale combined lifecycle finalization.
 - `tests/test_gui_translation_lifecycle.py` covers resume/reset start-state decisions, success finalization, failed-segment derivation, stopped-run completion blocking and paused-run completion blocking.
-- CI and `python-tests` passed on `aea7271e05cc9674763d387ce2fe2d84e35f4d6f`, confirming the guarded lifecycle workflow/docs head.
-- Latest guarded-final-update head `726dd4cdaeb3166f9872358c513f0d8af93edaac` still needs CI confirmation.
+- CI and `python-tests` passed on `df436fdc9d6997b0c657a20b03de7b6fe2bf3720`, confirming the guarded final update/docs head.
+- Latest GUI session helper head `fa4d7a50c2a4d4ed2da9aaaa3080260333f6b51f` still needs CI confirmation.
 
 Recommended focused test command:
 
 ```bash
-py -m pytest tests/test_translation_run_config.py tests/test_run_guard.py tests/test_gui_translation_adapter.py tests/test_translation_worker_runtime.py tests/test_translation_worker_orchestrator.py tests/test_gui_translation_workflow.py tests/test_gui_translation_lifecycle.py tests/test_batch_task.py tests/test_batch_controller.py tests/test_provider_base.py tests/test_openai_compatible_provider.py tests/test_openai_compatible_factory.py tests/test_gemini_provider.py tests/test_claude_provider.py tests/test_engine_bridge.py tests/test_translation_engine_adapter_bridge.py tests/test_translation_engine_gemini_claude_adapter_bridge.py -q
+py -m pytest tests/test_translation_run_config.py tests/test_run_guard.py tests/test_gui_translation_adapter.py tests/test_gui_translation_session.py tests/test_translation_worker_runtime.py tests/test_translation_worker_orchestrator.py tests/test_gui_translation_workflow.py tests/test_gui_translation_lifecycle.py tests/test_batch_task.py tests/test_batch_controller.py tests/test_provider_base.py tests/test_openai_compatible_provider.py tests/test_openai_compatible_factory.py tests/test_gemini_provider.py tests/test_claude_provider.py tests/test_engine_bridge.py tests/test_translation_engine_adapter_bridge.py tests/test_translation_engine_gemini_claude_adapter_bridge.py -q
 ```
 
 ## 4. Remaining work backlog
 
 ### P0 — finish stability phase 1
 
-1. Confirm CI on latest guarded-final-update head `726dd4cdaeb3166f9872358c513f0d8af93edaac`.
+1. Confirm CI on latest GUI session helper head `fa4d7a50c2a4d4ed2da9aaaa3080260333f6b51f`.
 2. Rewire `book_translator_gui.pyw` translation start/stop path:
-   - initialize `self.translation_run_guard = TranslationRunGuard()` or use adapter helper;
-   - call `start_guarded_translation_run(...)` inside `start_translation()`;
-   - use `plan_gui_translation_start(...)` for resume/reset state;
-   - pass the guarded run/config snapshot into `translate_text()`;
+   - initialize `self.translation_run_guard = TranslationRunGuard()` and `self.current_translation_session = None`;
+   - call `start_gui_translation_session(...)` inside `start_translation()`;
+   - apply `session.start_state` for resume/reset state;
+   - pass the session/config snapshot into `translate_text()`;
    - pass config into `translate_segment()`;
    - replace the body of `translate_text()` with a thin adapter around `run_guarded_gui_translation_lifecycle(...)`;
-   - apply the returned `GuiTranslationFinishState` to GUI state/widgets via `schedule_guarded_final_gui_update(...)`;
+   - apply the returned `GuiTranslationFinishState` to GUI state/widgets via `schedule_gui_translation_final_state(...)`;
    - stop background worker reads of `self.concurrency_var`, `self.target_language_var`, `self.style_var`.
 3. Guard worker UI writes through guarded workflow events.
 4. Rewire GUI batch processing through `BatchController` and `load_file_content(..., silent=True)`.
@@ -238,6 +247,10 @@ Added `run_guarded_gui_translation_lifecycle(...)`, exported it from `controller
 ### 2026-06-26 — add guarded final GUI update helpers
 
 Added `guarded_final_gui_update(...)` and `schedule_guarded_final_gui_update(...)`. These helpers let the GUI apply the final translation state and then finish the active run exactly once, while still rejecting stale/cancelled final updates.
+
+### 2026-06-26 — add GUI translation session helper
+
+Added `GuiTranslationSession`, `start_gui_translation_session(...)`, `cancel_gui_translation_session(...)` and `schedule_gui_translation_final_state(...)`. These helpers combine guarded run creation, config snapshotting, resume/reset planning, cancellation and final-state scheduling so `book_translator_gui.pyw` can be wired with fewer direct moving parts.
 
 ## 6. Mandatory update rule for future implementation
 
