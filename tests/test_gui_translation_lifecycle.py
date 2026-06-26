@@ -66,16 +66,16 @@ def test_plan_gui_translation_start_resets_when_signatures_do_not_match():
 
 def test_finalize_gui_translation_result_marks_success_ready_for_completion_and_cache_clear():
     result = TranslationWorkerResult(
-        source_segments=["hello", "world"],
-        translated_segments=["你好", "世界"],
+        source_segments=["hello world source", "another world source"],
+        translated_segments=["你好，世界。", "另一个世界。"],
         completed_count=2,
         failed_count=0,
-        final_text="你好\n\n世界",
+        final_text="你好，世界。\n\n另一个世界。",
     )
 
     state = finalize_gui_translation_result(result, target_language="中文")
 
-    assert state.translated_text == "你好\n\n世界"
+    assert state.translated_text == "你好，世界。\n\n另一个世界。"
     assert state.failed_segments == []
     assert state.progress == 100
     assert state.status_message == "翻译完成!"
@@ -85,11 +85,11 @@ def test_finalize_gui_translation_result_marks_success_ready_for_completion_and_
 
 def test_finalize_gui_translation_result_builds_failed_segments_for_incomplete_items():
     result = TranslationWorkerResult(
-        source_segments=["This is a long enough source sentence for checking.", "world"],
-        translated_segments=["[翻译错误: timeout]", "世界"],
+        source_segments=["This is a long enough source sentence for checking.", "world source"],
+        translated_segments=["[翻译错误: timeout]", "世界译文。"],
         completed_count=2,
         failed_count=1,
-        final_text="[翻译错误: timeout]\n\n世界",
+        final_text="[翻译错误: timeout]\n\n世界译文。",
     )
 
     state = finalize_gui_translation_result(result, target_language="中文")
