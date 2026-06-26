@@ -9,9 +9,11 @@
 - Pull request: `#2` — `Refactor: add stability phase controller groundwork`
 - Base branch: `main`
 - Last recorded progress date: `2026-06-26`
-- Last green CI-confirmed head: `0560c4cc36613ee018537dd03765d62eac7fc572`
-- Latest helper-layer/documentation head before this tracker update: `01a557a173f50831ad9cc56af7a846a62f439784`
-- Test status: CI and `python-tests` passed on `0560c4cc36613ee018537dd03765d62eac7fc572`. New runs for the guarded scheduler helper and checklist/doc commits were in progress when this tracker was updated.
+- Last green CI-confirmed head before this update: `5fdaf3711eed04694cd8904b7f6d87f6cc50762a`
+- Latest implementation commits before this tracker update:
+  - `8d58b4b93f862aaf2f0b4a971d56913cb1008c5c` — add translation worker runtime helpers and tests
+  - `5d3965ef309b8bc989aed9a9c761410950c6838d` — export worker runtime helpers
+- Test status: CI and `python-tests` passed on `5fdaf3711eed04694cd8904b7f6d87f6cc50762a`. New CI runs are expected after the worker runtime commits.
 - Merge guidance: use **Squash merge** because this branch contains many process commits.
 
 ## 1. Upgrade objective
@@ -30,12 +32,12 @@ The project is already feature-rich, but the main risks are runtime stability an
 
 | Area | Progress | Notes |
 |---|---:|---|
-| Overall upgrade plan | ~57% | Provider adapter wiring is mostly complete; CI scan was fixed on the last green head; GUI rewiring is still pending. |
-| Stability phase 1 foundations | ~93% | Run config, run guard, GUI adapter, batch controller, provider adapters and engine provider wiring are added. GUI adapter now includes a Tk-style scheduled update guard. |
+| Overall upgrade plan | ~58% | Provider adapter wiring is mostly complete; CI was green before the latest worker-runtime commits; GUI rewiring is still pending. |
+| Stability phase 1 foundations | ~94% | Run config, run guard, GUI adapter, batch controller, provider adapters, worker runtime helpers and engine provider wiring are added. |
 | Provider timeout / adapter layer | ~95% | OpenAI-compatible, Gemini and Claude non-streaming engine paths are wired through adapters. Streaming path still needs separate evaluation. |
-| GUI thread-safety integration | ~38% | Helper layer can now snapshot config, guard direct UI writes and guard queued `root.after(...)` UI writes, but `book_translator_gui.pyw` is not rewired yet. |
+| GUI thread-safety integration | ~42% | Helper layer can now snapshot config, guard direct UI writes, guard queued `root.after(...)` UI writes, and compute worker-loop runtime decisions without Tk reads. `book_translator_gui.pyw` still needs wiring. |
 | Batch silent/resumable flow | ~55% | `BatchTaskRecord` and `BatchController` exist; GUI batch flow is not rewired yet. |
-| CI confirmation | ~90% | CI and `python-tests` passed on the latest inspected head before the new helper/checklist commits. New helper-commit runs still need confirmation. |
+| CI confirmation | ~90% | CI and `python-tests` passed on `5fdaf3711eed04694cd8904b7f6d87f6cc50762a`; latest worker-runtime commits need confirmation. |
 
 ## 3. Completed work
 
@@ -48,6 +50,7 @@ Completed files:
 - `controllers/translation_run_config.py`
 - `controllers/run_guard.py`
 - `controllers/gui_translation_adapter.py`
+- `controllers/translation_worker_runtime.py`
 - `controllers/batch_task.py`
 - `controllers/batch_controller.py`
 
@@ -59,6 +62,14 @@ Completed behavior:
 - `TranslationRunGuard` for rejecting stale worker results after stop/cancel.
 - GUI-facing adapter helpers for reading Tk-style values, starting guarded translation runs, checking worker UI writes and cancelling the active run.
 - `schedule_guarded_gui_update(...)` helper for queued Tk `root.after(...)` updates; the guard check runs inside the scheduled callback so already-queued stale writes are skipped after stop/cancel or after a newer run starts.
+- `translation_worker_runtime` helpers for worker-loop decisions that should not read Tk variables:
+  - `clamp_start_index(...)`
+  - `worker_count_for_run(...)`
+  - `should_use_context(...)`
+  - `previous_segment_context(...)`
+  - `ensure_segment_slots(...)`
+  - `progress_percent(...)`
+  - `translated_text_snapshot(...)`
 - `BatchTaskRecord` for normalized task state.
 - `BatchController` for queue normalization, next-task selection, status updates, cancellation, snapshot counts and serialization.
 - `should_load_batch_file_silently(...)` helper for future `load_file_content(..., silent=True)` wiring.
@@ -102,6 +113,7 @@ Added focused unit tests:
 - `tests/test_translation_run_config.py`
 - `tests/test_run_guard.py`
 - `tests/test_gui_translation_adapter.py`
+- `tests/test_translation_worker_runtime.py`
 - `tests/test_batch_task.py`
 - `tests/test_batch_controller.py`
 - `tests/test_provider_base.py`
@@ -115,12 +127,13 @@ Added focused unit tests:
 
 Recent test additions:
 
-- `tests/test_gui_translation_adapter.py` now covers `schedule_guarded_gui_update(...)`, including the important case where a callback was scheduled while a run was current but executes only after that run was cancelled.
+- `tests/test_gui_translation_adapter.py` covers `schedule_guarded_gui_update(...)`, including queued callback rejection after cancellation.
+- `tests/test_translation_worker_runtime.py` covers resume index clamping, worker-count selection from immutable config, context eligibility, context skipping for empty/error segments, progress percentage and translated-text snapshots.
 
 Recommended focused test command:
 
 ```bash
-py -m pytest tests/test_translation_run_config.py tests/test_run_guard.py tests/test_gui_translation_adapter.py tests/test_batch_task.py tests/test_batch_controller.py tests/test_provider_base.py tests/test_openai_compatible_provider.py tests/test_openai_compatible_factory.py tests/test_gemini_provider.py tests/test_claude_provider.py tests/test_engine_bridge.py tests/test_translation_engine_adapter_bridge.py tests/test_translation_engine_gemini_claude_adapter_bridge.py -q
+py -m pytest tests/test_translation_run_config.py tests/test_run_guard.py tests/test_gui_translation_adapter.py tests/test_translation_worker_runtime.py tests/test_batch_task.py tests/test_batch_controller.py tests/test_provider_base.py tests/test_openai_compatible_provider.py tests/test_openai_compatible_factory.py tests/test_gemini_provider.py tests/test_claude_provider.py tests/test_engine_bridge.py tests/test_translation_engine_adapter_bridge.py tests/test_translation_engine_gemini_claude_adapter_bridge.py -q
 ```
 
 ### 3.4 Repository hygiene and scan cleanup
@@ -151,23 +164,24 @@ Cleanup completed:
 - Updated CI secrets job to tee `detect-secrets-hook` output to `detect-secrets.log` and upload that log as an artifact.
 - Inspected the uploaded `detect-secrets-log` artifact for CI run `28209644495`; the remaining scan output pointed only to local LM Studio placeholder values.
 - Simplified the scan allowlist to a narrow substring rule for reviewed local placeholders and documented environment variable names.
-- Confirmed CI and `python-tests` passed after the scan allowlist repair on commit `0560c4cc36613ee018537dd03765d62eac7fc572`.
+- Confirmed CI and `python-tests` passed after the scan allowlist repair on commit `5fdaf3711eed04694cd8904b7f6d87f6cc50762a`.
 
 Not completed:
 
-- Need CI confirmation for the latest helper/checklist commits after `01a557a173f50831ad9cc56af7a846a62f439784`.
+- Need CI confirmation for the latest worker-runtime commits after `5d3965ef309b8bc989aed9a9c761410950c6838d`.
 - If the scan fails again, download/read `detect-secrets-log` and fix the exact flagged path/line.
 
 ## 4. Remaining work backlog
 
 ### P0 — finish stability phase 1
 
-1. Confirm CI on the latest helper/checklist commits.
+1. Confirm CI on the latest worker-runtime commits.
 2. Rewire `book_translator_gui.pyw` translation start/stop path:
    - initialize `self.translation_run_guard = TranslationRunGuard()` or use adapter helper;
    - call `start_guarded_translation_run(...)` inside `start_translation()`;
    - pass the guarded run/config snapshot into `translate_text()`;
    - pass config into `translate_segment()`;
+   - replace worker-loop calculations with `translation_worker_runtime` helpers;
    - stop background worker reads of `self.concurrency_var`, `self.target_language_var`, `self.style_var`.
 3. Guard worker UI writes:
    - replace direct worker `self.root.after(...)` UI scheduling with `schedule_guarded_gui_update(...)` where the update belongs to a translation run;
@@ -230,54 +244,14 @@ Completed:
 - Preserved the existing `(translated_text, model)` return shape for both methods.
 - Added engine-level tests for request fields, timeout, model, max tokens and prompt instructions.
 
-### 2026-06-25 — repository scan cleanup pass 1
-
-Changed files:
-
-- Provider/engine adapter tests.
-- Config/provider utility tests.
-- `translate-upgrade-series-0001-0009.mbox` removed.
-- `translate-upgrade-series-0001-0009-fixed.mbox` removed.
-- `docs/upgrade-progress.md`.
+### 2026-06-25 — repository scan cleanup passes
 
 Completed:
 
 - Replaced static placeholder strings in tests with runtime-composed dummy values.
 - Removed tracked patch `.mbox` artifacts.
-
-### 2026-06-25 — repository scan cleanup pass 2
-
-Changed files:
-
-- `0003-README.txt` removed.
-- `0003-book-translator-gui-fix.py` removed.
-- `fix_gui_v5.py` removed.
-- `fix_gui_v4.py` removed.
-- `fix_book_translator_gui_admin_audit.py` removed.
-- `apply_translate_fix_bundle_v3.py` removed.
-- `patch-v3/apply_translate_fix_bundle_v3.py` removed.
-- `book_translator_gui.pyw.bak_v5` removed.
-- `docs/upgrade-progress.md`.
-
-Completed:
-
 - Removed obvious root-level and patch-directory historical scripts that are not part of the maintained runtime path.
 - Removed tracked GUI backup artifact.
-
-### 2026-06-25 — repository scan cleanup pass 3
-
-Changed files:
-
-- `translator_config.json` removed.
-- `config_backups/config_backup_20251225_161944.json` removed.
-- `config_backups/config_backup_20260202_162940.json` removed.
-- `config_backups/config_backup_20260328_094858.json` removed.
-- `test_autosave.py` removed.
-- `API_AUTO_SAVE.txt` removed.
-- `docs/upgrade-progress.md`.
-
-Completed:
-
 - Removed tracked runtime config file and backups that should stay local-only.
 - Removed legacy autosave root script and old autosave note artifact.
 - Reduced repository scan surface and improved repository hygiene.
@@ -295,11 +269,6 @@ Completed:
 - Added an always-run artifact upload for `detect-secrets.log`.
 - This does not weaken the scan; it keeps the job failing when the scan fails, but preserves actionable output.
 
-Tests:
-
-- Run: not run after this CI diagnostics update.
-- Required follow-up: confirm CI on current head and inspect `detect-secrets-log` artifact if the scan still fails.
-
 ### 2026-06-26 — inspect CI scan artifact and narrow placeholder allowlist
 
 Changed files:
@@ -314,17 +283,6 @@ Completed:
 - Downloaded and inspected `detect-secrets-log` from run `28209644495`.
 - Found the remaining scan failure points were only `book_translator_gui.pyw:116` and `config_manager.py:64`, both caused by the reviewed local LM Studio placeholder value `lm-studio`.
 - Replaced the previous complex POSIX-style `--exclude-lines` pattern with a simpler narrow allowlist: `pragma: allowlist secret|lm-studio|BOOK_TRANSLATOR_ADMIN_PASSWORD|ZLIBRARY_PASSWORD`.
-- Updated this tracker so the next continuation starts from the exact CI failure state.
-
-Tests:
-
-- Not run locally in this environment.
-- Required follow-up: wait for the new GitHub Actions run on the latest head; if `secrets` still fails, inspect the newly uploaded `detect-secrets-log` artifact.
-
-Known risks:
-
-- The workflow allowlist should stay narrow. Do not broaden it to ignore all `api_key` fields or all password fields.
-- The next real implementation step is still GUI rewiring, not additional provider adapter work.
 
 ### 2026-06-26 — add guarded scheduler helper for Tk queued UI writes
 
@@ -340,16 +298,30 @@ Completed:
 - Added `schedule_guarded_gui_update(...)` to guard Tk-style `root.after(...)` updates at callback execution time, not just when the worker schedules them.
 - Added unit coverage for a cancelled run where a callback was already scheduled and must not write to the UI when it eventually executes.
 - Refreshed `docs/stability-phase-1-checklist.md` so the next implementation step explicitly calls out replacing run-owned `root.after(...)` writes with `schedule_guarded_gui_update(...)`.
-- Confirmed earlier CI and `python-tests` were green after the secrets scan repair before making this helper change.
+
+### 2026-06-26 — extract translation worker runtime helpers
+
+Changed files:
+
+- `controllers/translation_worker_runtime.py`
+- `controllers/__init__.py`
+- `tests/test_translation_worker_runtime.py`
+- `docs/upgrade-progress.md`
+
+Completed:
+
+- Added pure worker-loop helpers for resume clamping, worker-count calculation, context decision, previous-context lookup, translated segment slot extension, progress calculation and translated text snapshots.
+- Exported the helper functions from `controllers.__init__`.
+- Added unit tests to lock these behaviors down before `book_translator_gui.pyw` is rewired.
 
 Tests:
 
 - Not run locally in this environment.
-- GitHub Actions runs for commit `01a557a173f50831ad9cc56af7a846a62f439784` were in progress when this tracker was updated.
+- Required follow-up: confirm GitHub Actions on the latest head.
 
 Known risks:
 
-- `book_translator_gui.pyw` has not yet been rewired to call the new scheduler helper. The next implementation step should be a narrow GUI integration patch, ideally only around `start_translation()`, `stop_translation()`, `translate_text()`, `translate_segment()`, and worker UI update scheduling.
+- `book_translator_gui.pyw` has not yet been rewired to call these helpers. The next implementation step should import and apply these helpers inside `translate_text()` after starting a guarded run.
 
 ## 6. Mandatory update rule for future implementation
 
