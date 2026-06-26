@@ -10,8 +10,8 @@
 - Base branch: `main`
 - Last recorded progress date: `2026-06-26`
 - Last green CI-confirmed head: `0560c4cc36613ee018537dd03765d62eac7fc572`
-- Latest helper-layer commits before this tracker update: `cc8b55fd83dd8328b6323bfec26cafd6fc06af51`, `e880b1255667a9c5032389a9bfe2ffded76e7a3b`
-- Test status: CI and `python-tests` passed on `0560c4cc36613ee018537dd03765d62eac7fc572`. New runs for the guarded scheduler helper commits were in progress when this tracker was updated.
+- Latest helper-layer commits before this tracker update: `cc8b55fd83dd8328b6323bfec26cafd6fc06af51`, `e880b1255667a9c5032389a9bfe2ffded76e7a3b`, `5ad1bca580d3f850c6de8ecc8b71e86dd2edda68`, `4eb53bf5d7e988cb4d3505bda74a319b814ef8f4`
+- Test status: CI and `python-tests` passed on `0560c4cc36613ee018537dd03765d62eac7fc572`. New runs for the guarded scheduler helper and checklist/doc commits were queued when this tracker was updated.
 - Merge guidance: use **Squash merge** because this branch contains many process commits.
 
 ## 1. Upgrade objective
@@ -35,7 +35,7 @@ The project is already feature-rich, but the main risks are runtime stability an
 | Provider timeout / adapter layer | ~95% | OpenAI-compatible, Gemini and Claude non-streaming engine paths are wired through adapters. Streaming path still needs separate evaluation. |
 | GUI thread-safety integration | ~38% | Helper layer can now snapshot config, guard direct UI writes and guard queued `root.after(...)` UI writes, but `book_translator_gui.pyw` is not rewired yet. |
 | Batch silent/resumable flow | ~55% | `BatchTaskRecord` and `BatchController` exist; GUI batch flow is not rewired yet. |
-| CI confirmation | ~90% | CI and `python-tests` passed on the latest inspected head before the new helper commits. New helper-commit runs still need confirmation. |
+| CI confirmation | ~90% | CI and `python-tests` passed on the latest inspected head before the new helper/checklist commits. New helper-commit runs still need confirmation. |
 
 ## 3. Completed work
 
@@ -155,14 +155,14 @@ Cleanup completed:
 
 Not completed:
 
-- Need CI confirmation for the latest helper commits after `e880b1255667a9c5032389a9bfe2ffded76e7a3b`.
+- Need CI confirmation for the latest helper/checklist commits after `4eb53bf5d7e988cb4d3505bda74a319b814ef8f4`.
 - If the scan fails again, download/read `detect-secrets-log` and fix the exact flagged path/line.
 
 ## 4. Remaining work backlog
 
 ### P0 — finish stability phase 1
 
-1. Confirm CI on the latest helper commits.
+1. Confirm CI on the latest helper/checklist commits.
 2. Rewire `book_translator_gui.pyw` translation start/stop path:
    - initialize `self.translation_run_guard = TranslationRunGuard()` or use adapter helper;
    - call `start_guarded_translation_run(...)` inside `start_translation()`;
@@ -333,17 +333,19 @@ Changed files:
 - `controllers/gui_translation_adapter.py`
 - `tests/test_gui_translation_adapter.py`
 - `docs/upgrade-progress.md`
+- `docs/stability-phase-1-checklist.md`
 
 Completed:
 
 - Added `schedule_guarded_gui_update(...)` to guard Tk-style `root.after(...)` updates at callback execution time, not just when the worker schedules them.
 - Added unit coverage for a cancelled run where a callback was already scheduled and must not write to the UI when it eventually executes.
+- Refreshed `docs/stability-phase-1-checklist.md` so the next implementation step explicitly calls out replacing run-owned `root.after(...)` writes with `schedule_guarded_gui_update(...)`.
 - Confirmed earlier CI and `python-tests` were green after the secrets scan repair before making this helper change.
 
 Tests:
 
 - Not run locally in this environment.
-- GitHub Actions runs for commit `e880b1255667a9c5032389a9bfe2ffded76e7a3b` were in progress when this tracker was updated.
+- GitHub Actions runs for commit `4eb53bf5d7e988cb4d3505bda74a319b814ef8f4` were queued when this tracker was updated.
 
 Known risks:
 
