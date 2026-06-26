@@ -14,15 +14,15 @@ def test_get_available_providers_filters_incomplete_configs(monkeypatch):
     engine = TranslationEngine()
     engine.add_api_config(
         "openai",
-        APIConfig(provider=APIProvider.OPENAI, api_key="", model="gpt-4o-mini"),
+        APIConfig(provider=APIProvider.OPENAI, api_key="", model="gpt-4o-mini"),  # pragma: allowlist secret
     )
     engine.add_api_config(
         "custom",
-        APIConfig(provider=APIProvider.CUSTOM, api_key="", model="", base_url="http://127.0.0.1:8000/v1"),
+        APIConfig(provider=APIProvider.CUSTOM, api_key="", model="", base_url="http://127.0.0.1:8000/v1"),  # pragma: allowlist secret
     )
     engine.add_api_config(
         "lm_studio",
-        APIConfig(provider=APIProvider.LM_STUDIO, api_key="lm-studio", model="qwen", base_url="http://127.0.0.1:1234/v1"),
+        APIConfig(provider=APIProvider.LM_STUDIO, api_key="lm-studio", model="qwen", base_url="http://127.0.0.1:1234/v1"),  # pragma: allowlist secret
     )
 
     assert engine.get_available_providers() == ["lm_studio"]
