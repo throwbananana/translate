@@ -14,6 +14,11 @@ from .gui_translation_adapter import (
     should_apply_gui_update,
     start_guarded_translation_run,
 )
+from .gui_translation_workflow import (
+    GuiTranslationWorkerCallbacks,
+    build_guarded_translation_events,
+    run_guarded_gui_translation_worker,
+)
 from .run_guard import TranslationRunGuard
 from .translation_run_config import TranslationRunConfig, coerce_translation_run_config
 from .translation_worker_orchestrator import (
@@ -41,7 +46,10 @@ __all__ = [
     "SegmentWorkResult",
     "TranslationWorkerEvents",
     "TranslationWorkerResult",
+    "GuiTranslationWorkerCallbacks",
     "run_translation_worker",
+    "build_guarded_translation_events",
+    "run_guarded_gui_translation_worker",
     "coerce_translation_run_config",
     "build_run_config_from_gui_state",
     "start_guarded_translation_run",
