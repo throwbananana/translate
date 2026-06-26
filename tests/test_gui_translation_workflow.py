@@ -2,6 +2,7 @@ import pytest
 
 from controllers.gui_translation_workflow import (
     GuiTranslationWorkerCallbacks,
+    run_guarded_gui_translation_lifecycle,
     run_guarded_gui_translation_worker,
 )
 from controllers.run_guard import TranslationRunGuard
@@ -27,10 +28,10 @@ class FakeScheduler:
             callback()
 
 
-def _config(concurrency=1):
+def _config(concurrency=1, target_language="中文"):
     return coerce_translation_run_config(
         api_type="openai",
-        target_language="中文",
+        target_language=target_language,
         style="直译 (Literal)",
         concurrency=concurrency,
     )
@@ -119,6 +120,69 @@ def test_guarded_gui_translation_worker_stops_when_run_is_stale():
 
     assert result.stopped is True
     assert result.completed_count == 0
+    assert statuses == []
+    assert progress == []
+    assert snapshots == []
+
+
+def test_guarded_gui_translation_lifecycle_returns_final_gui_state():
+    guard = TranslationRunGuard()
+    run_id = guard.start_run()
+    scheduler = FakeScheduler()
+    statuses = []
+    progress = []
+    snapshots = []
+
+    finish_state = run_guarded_gui_translation_lifecycle(
+        guard=guard,
+        run_id=run_id,
+        scheduler=scheduler.after,
+        text="hello world source|another source line",
+        config=_config(target_language="英文"),
+        callbacks=_callbacks(statuses, progress, snapshots),
+        snapshot_every=1,
+    )
+    scheduler.drain()
+
+    assert finish_state.translated_segments == [
+        "HELLO WORLD SOURCE",
+        "ANOTHER SOURCE LINE",
+    ]
+    assert finish_state.translated_text == "HELLO WORLD SOURCE\n\nANOTHER SOURCE LINE"
+    assert finish_state.failed_segments == []
+    assert finish_state.status_message == "翻译完成!"
+    assert finish_state.progress == 100
+    assert finish_state.should_call_completion_hook is True
+    assert finish_state.should_clear_progress_cache is True
+    assert statuses[-1] == "翻译完成!"
+    assert progress[-1] == 100
+    assert snapshots[-1] == "HELLO WORLD SOURCE\n\nANOTHER SOURCE LINE"
+
+
+def test_guarded_gui_translation_lifecycle_finalizes_stale_run_as_stopped():
+    guard = TranslationRunGuard()
+    stale_run_id = guard.start_run()
+    guard.start_run()  # supersede before work begins
+    scheduler = FakeScheduler()
+    statuses = []
+    progress = []
+    snapshots = []
+
+    finish_state = run_guarded_gui_translation_lifecycle(
+        guard=guard,
+        run_id=stale_run_id,
+        scheduler=scheduler.after,
+        text="hello world source|another source line",
+        config=_config(target_language="英文"),
+        callbacks=_callbacks(statuses, progress, snapshots),
+    )
+    scheduler.drain()
+
+    assert finish_state.stopped is True
+    assert finish_state.progress == 0
+    assert finish_state.status_message == "翻译已停止"
+    assert finish_state.should_call_completion_hook is False
+    assert finish_state.should_clear_progress_cache is False
     assert statuses == []
     assert progress == []
     assert snapshots == []
