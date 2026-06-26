@@ -109,6 +109,28 @@ def guarded_gui_update(
     return True
 
 
+def schedule_guarded_gui_update(
+    guard: TranslationRunGuard,
+    run_id: str | None,
+    scheduler: Callable[..., Any],
+    update_callback: Callable[..., Any],
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """Schedule a Tk-style UI update and re-check the guard when it runs.
+
+    `root.after(...)` calls are queued from worker threads and may execute after
+    a user stops a translation or starts a new run.  Guarding at schedule time is
+    not enough, so this helper performs the stale-run check inside the scheduled
+    callback.
+    """
+
+    def _run_if_current() -> None:
+        guarded_gui_update(guard, run_id, update_callback, *args, **kwargs)
+
+    return scheduler(0, _run_if_current)
+
+
 def cancel_guarded_translation_run(guard: TranslationRunGuard) -> str | None:
     """Cancel the active run and return the cancelled id, if any."""
     return guard.cancel_current()
