@@ -22,6 +22,12 @@ from .gui_translation_lifecycle import (
     finalize_gui_translation_result,
     plan_gui_translation_start,
 )
+from .gui_translation_session import (
+    GuiTranslationSession,
+    cancel_gui_translation_session,
+    schedule_gui_translation_final_state,
+    start_gui_translation_session,
+)
 from .gui_translation_workflow import (
     GuiTranslationWorkerCallbacks,
     build_guarded_translation_events,
@@ -50,6 +56,7 @@ __all__ = [
     "TranslationRunConfig",
     "TranslationRunGuard",
     "GuardedTranslationRun",
+    "GuiTranslationSession",
     "BatchController",
     "BatchQueueSnapshot",
     "SegmentWorkResult",
@@ -65,6 +72,9 @@ __all__ = [
     "coerce_translation_run_config",
     "build_run_config_from_gui_state",
     "start_guarded_translation_run",
+    "start_gui_translation_session",
+    "cancel_gui_translation_session",
+    "schedule_gui_translation_final_state",
     "should_apply_gui_update",
     "guarded_gui_update",
     "guarded_final_gui_update",
