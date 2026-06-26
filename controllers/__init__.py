@@ -10,7 +10,9 @@ from .gui_translation_adapter import (
     GuardedTranslationRun,
     build_run_config_from_gui_state,
     cancel_guarded_translation_run,
+    guarded_final_gui_update,
     guarded_gui_update,
+    schedule_guarded_final_gui_update,
     should_apply_gui_update,
     start_guarded_translation_run,
 )
@@ -65,6 +67,8 @@ __all__ = [
     "start_guarded_translation_run",
     "should_apply_gui_update",
     "guarded_gui_update",
+    "guarded_final_gui_update",
+    "schedule_guarded_final_gui_update",
     "cancel_guarded_translation_run",
     "plan_gui_translation_start",
     "finalize_gui_translation_result",
