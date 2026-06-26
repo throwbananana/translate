@@ -10,7 +10,7 @@
 - Base branch: `main`
 - Last recorded progress date: `2026-06-26`
 - Last green CI-confirmed head: `0560c4cc36613ee018537dd03765d62eac7fc572`
-- Latest helper-layer commits before this tracker update: `cc8b55fd83dd8328b6323bfec26cafd6fc06af51`, `e880b1255667a9c5032389a9bfe2ffded76e7a3b`, `5ad1bca580d3f850c6de8ecc8b71e86dd2edda68`, `4eb53bf5d7e988cb4d3505bda74a319b814ef8f4`
+- Latest helper-layer/documentation head before this tracker update: `82dc8a5902a2956d5b8f06703b2d1e310ca5753a`
 - Test status: CI and `python-tests` passed on `0560c4cc36613ee018537dd03765d62eac7fc572`. New runs for the guarded scheduler helper and checklist/doc commits were queued when this tracker was updated.
 - Merge guidance: use **Squash merge** because this branch contains many process commits.
 
@@ -155,7 +155,7 @@ Cleanup completed:
 
 Not completed:
 
-- Need CI confirmation for the latest helper/checklist commits after `4eb53bf5d7e988cb4d3505bda74a319b814ef8f4`.
+- Need CI confirmation for the latest helper/checklist commits after `82dc8a5902a2956d5b8f06703b2d1e310ca5753a`.
 - If the scan fails again, download/read `detect-secrets-log` and fix the exact flagged path/line.
 
 ## 4. Remaining work backlog
@@ -345,7 +345,7 @@ Completed:
 Tests:
 
 - Not run locally in this environment.
-- GitHub Actions runs for commit `4eb53bf5d7e988cb4d3505bda74a319b814ef8f4` were queued when this tracker was updated.
+- GitHub Actions runs for commit `82dc8a5902a2956d5b8f06703b2d1e310ca5753a` were queued when this tracker was updated.
 
 Known risks:
 
