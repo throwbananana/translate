@@ -14,6 +14,12 @@ from .gui_translation_adapter import (
     should_apply_gui_update,
     start_guarded_translation_run,
 )
+from .gui_translation_lifecycle import (
+    GuiTranslationFinishState,
+    GuiTranslationStartState,
+    finalize_gui_translation_result,
+    plan_gui_translation_start,
+)
 from .gui_translation_workflow import (
     GuiTranslationWorkerCallbacks,
     build_guarded_translation_events,
@@ -47,6 +53,8 @@ __all__ = [
     "TranslationWorkerEvents",
     "TranslationWorkerResult",
     "GuiTranslationWorkerCallbacks",
+    "GuiTranslationStartState",
+    "GuiTranslationFinishState",
     "run_translation_worker",
     "build_guarded_translation_events",
     "run_guarded_gui_translation_worker",
@@ -56,6 +64,8 @@ __all__ = [
     "should_apply_gui_update",
     "guarded_gui_update",
     "cancel_guarded_translation_run",
+    "plan_gui_translation_start",
+    "finalize_gui_translation_result",
     "should_load_batch_file_silently",
     "clamp_start_index",
     "worker_count_for_run",
