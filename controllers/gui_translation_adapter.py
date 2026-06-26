@@ -109,6 +109,26 @@ def guarded_gui_update(
     return True
 
 
+def guarded_final_gui_update(
+    guard: TranslationRunGuard,
+    run_id: str | None,
+    update_callback: Callable[..., Any],
+    *args: Any,
+    **kwargs: Any,
+) -> bool:
+    """Apply the final GUI update and then finish the run.
+
+    Intermediate worker updates must keep the run active so queued callbacks can
+    continue to pass the guard.  The final state application is different: after
+    the GUI accepts it, the run should no longer remain active.  If the run is
+    already stale/cancelled, the callback is skipped and the guard is unchanged.
+    """
+    if not should_apply_gui_update(guard, run_id):
+        return False
+    update_callback(*args, **kwargs)
+    return guard.finish_run(run_id or "")
+
+
 def schedule_guarded_gui_update(
     guard: TranslationRunGuard,
     run_id: str | None,
@@ -127,6 +147,22 @@ def schedule_guarded_gui_update(
 
     def _run_if_current() -> None:
         guarded_gui_update(guard, run_id, update_callback, *args, **kwargs)
+
+    return scheduler(0, _run_if_current)
+
+
+def schedule_guarded_final_gui_update(
+    guard: TranslationRunGuard,
+    run_id: str | None,
+    scheduler: Callable[..., Any],
+    update_callback: Callable[..., Any],
+    *args: Any,
+    **kwargs: Any,
+) -> Any:
+    """Schedule the final Tk-style UI update and finish the run if applied."""
+
+    def _run_if_current() -> None:
+        guarded_final_gui_update(guard, run_id, update_callback, *args, **kwargs)
 
     return scheduler(0, _run_if_current)
 
