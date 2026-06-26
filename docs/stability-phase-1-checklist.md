@@ -40,10 +40,10 @@
 - [x] Remove tracked historical GUI fix scripts, patch bundle scripts and GUI backup artifact.
 - [x] Remove tracked runtime config, config backup and legacy autosave artifacts.
 - [x] Confirm CI and `python-tests` are green after the secrets scan repair.
+- [x] Confirm CI and `python-tests` are green after the guarded GUI workflow commits.
 
 ## Next implementation steps
 
-- [ ] Confirm latest CI after the guarded GUI workflow commits.
 - [ ] Wire `start_guarded_translation_run(...)` into `BookTranslatorGUI.start_translation()`.
 - [ ] Replace `BookTranslatorGUI.translate_text()` body with a thin adapter around `run_guarded_gui_translation_worker(...)`.
 - [ ] Pass the config snapshot into `translate_segment()`.
