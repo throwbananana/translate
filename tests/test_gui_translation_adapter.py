@@ -4,6 +4,7 @@ from controllers.gui_translation_adapter import (
     build_run_config_from_gui_state,
     cancel_guarded_translation_run,
     guarded_gui_update,
+    schedule_guarded_gui_update,
     start_guarded_translation_run,
 )
 from controllers.run_guard import TranslationRunGuard
@@ -18,6 +19,16 @@ class FakeVar:
 
     def get(self):
         return self.value
+
+
+class FakeTkScheduler:
+    def __init__(self):
+        self.callbacks = []
+
+    def __call__(self, delay_ms, callback):
+        assert delay_ms == 0
+        self.callbacks.append(callback)
+        return f"after-{len(self.callbacks)}"
 
 
 def test_build_run_config_from_gui_state_reads_tk_style_values():
@@ -81,3 +92,46 @@ def test_guarded_gui_update_skips_stale_or_cancelled_runs():
     assert cancelled == second.run_id
     assert guarded_gui_update(guard, second.run_id, calls.append, "late") is False
     assert calls == ["new"]
+
+
+def test_schedule_guarded_gui_update_rechecks_guard_when_callback_runs():
+    guard = TranslationRunGuard()
+    scheduler = FakeTkScheduler()
+    calls = []
+
+    run = start_guarded_translation_run(
+        guard,
+        api_type="openai",
+        target_language="中文",
+        style="直译 (Literal)",
+    )
+
+    token = schedule_guarded_gui_update(
+        guard,
+        run.run_id,
+        scheduler,
+        calls.append,
+        "late",
+    )
+
+    assert token == "after-1"
+    cancel_guarded_translation_run(guard)
+    scheduler.callbacks[0]()
+    assert calls == []
+
+    current = start_guarded_translation_run(
+        guard,
+        api_type="openai",
+        target_language="中文",
+        style="直译 (Literal)",
+    )
+    schedule_guarded_gui_update(
+        guard,
+        current.run_id,
+        scheduler,
+        calls.append,
+        "current",
+    )
+
+    scheduler.callbacks[1]()
+    assert calls == ["current"]
