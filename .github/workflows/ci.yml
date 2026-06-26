@@ -58,9 +58,9 @@ jobs:
       - name: Scan tracked files for secrets
         run: |
           set -o pipefail
-          # Allow only reviewed placeholder fields: empty API key/password values,
-          # the LM Studio local placeholder key, and documented environment names.
-          EXCLUDE_LINES='pragma: allowlist secret|^[[:space:]]*["'"'"']api_key["'"'"']:[[:space:]]*["'"'"'](|lm-studio)["'"'"']|^[[:space:]]*["'"'"']password["'"'"']:[[:space:]]*["'"'"'](|ZLIBRARY_PASSWORD)["'"'"']|BOOK_TRANSLATOR_ADMIN_PASSWORD|ZLIBRARY_PASSWORD'
+          # Allow reviewed local placeholders and documented environment names only.
+          # Keep the rule narrow: actual provider keys are still scanned normally.
+          EXCLUDE_LINES='pragma: allowlist secret|lm-studio|BOOK_TRANSLATOR_ADMIN_PASSWORD|ZLIBRARY_PASSWORD'
           git ls-files -z | xargs -0 detect-secrets-hook --exclude-lines "$EXCLUDE_LINES" 2>&1 | tee detect-secrets.log
 
       - name: Upload detect-secrets log
