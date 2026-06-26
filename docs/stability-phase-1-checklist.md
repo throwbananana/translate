@@ -18,6 +18,9 @@
 - [x] Add `GuiTranslationSession` plus helpers to start/cancel guarded GUI sessions and schedule final-state application.
 - [x] Add first-pass GUI wiring patch tool for guarded imports, session state initialization and stop cancellation in `book_translator_gui.pyw`.
 - [x] Extend GUI wiring patch tool to route `start_translation()` resume/reset planning through `start_gui_translation_session(...)`, apply `session.start_state`, and pass the session into the translation thread.
+- [x] Extend GUI wiring patch tool to generate guarded `translate_text(self, session=None)` lifecycle wiring through `run_guarded_gui_translation_lifecycle(...)`.
+- [x] Extend GUI wiring patch tool to generate final-state application through `schedule_gui_translation_final_state(...)`.
+- [x] Extend GUI wiring patch tool to generate `translate_segment(..., config=None)` so guarded workers use config snapshots instead of Tk variable reads for target language/style.
 - [x] Add pure `translation_worker_runtime` helpers for resume clamping, worker count, context selection, segment-slot extension, progress and translated-text snapshots.
 - [x] Add `translation_worker_orchestrator` to run the serial/concurrent translation worker loop through injected callbacks without tkinter dependencies.
 - [x] Add `gui_translation_workflow` to compose the run guard, guarded scheduler and worker orchestrator into one GUI-facing adapter.
@@ -25,7 +28,7 @@
 - [x] Add `gui_translation_lifecycle` to plan resume/reset start state and finalize worker results into legacy GUI state fields.
 - [x] Add unit tests for GUI translation adapter helpers, including scheduled stale callback rejection and final guarded update behavior.
 - [x] Add unit tests for GUI translation session behavior: config snapshots, resume/reset planning, cancellation and final-state scheduling.
-- [x] Add unit tests for first-pass GUI wiring patch tool behavior, start-session rewrite and idempotency.
+- [x] Add unit tests for GUI wiring patch tool behavior, start-session rewrite, guarded lifecycle rewrite, segment-config rewrite and idempotency.
 - [x] Add unit tests for worker runtime helper behavior before GUI rewiring.
 - [x] Add unit tests for worker orchestrator behavior: serial context, parallel no-context, resume, failure pause, cancellation stop, progress and snapshots.
 - [x] Add unit tests for guarded GUI workflow behavior: normal scheduled updates, queued update skip after cancel, stale-run refusal, and guarded lifecycle finalization.
@@ -55,17 +58,15 @@
 - [x] Confirm CI and `python-tests` are green after the guarded final update/docs head.
 - [x] Confirm CI and `python-tests` are green after the GUI translation session helper commits.
 - [x] Confirm CI and `python-tests` are green after the first-pass GUI wiring patch-tool commits.
+- [x] Confirm CI and `python-tests` are green on `61916c0c6170d3bee32aa3f6a7765b6fd53f7897`.
 
 ## Next implementation steps
 
-- [ ] Confirm CI on latest start-session GUI wiring patch commits.
-- [ ] Apply or further extend `tools/wire_gui_translation_session.py` against `book_translator_gui.pyw`.
-- [ ] Replace `BookTranslatorGUI.translate_text()` body with a thin adapter around `run_guarded_gui_translation_lifecycle(...)`.
-- [ ] Apply the returned `GuiTranslationFinishState` via `schedule_gui_translation_final_state(...)`.
-- [ ] Pass the config snapshot into `translate_segment()`.
-- [ ] Stop reading Tk variables from background worker code.
-- [ ] Replace run-owned `root.after(...)` writes with guarded workflow events.
-- [ ] Use `guarded_gui_update(...)` or `should_apply_gui_update(...)` before any remaining direct worker UI write-back.
+- [ ] Confirm CI on the guarded-lifecycle patch-tool/docs head.
+- [ ] Run `tools/wire_gui_translation_session.py` against `book_translator_gui.pyw` and review the generated diff.
+- [ ] Commit the reviewed generated `book_translator_gui.pyw` diff.
+- [ ] Validate whether legacy single-thread retry should be preserved inside the guarded worker flow or moved into a follow-up controller helper.
+- [ ] Replace any remaining run-owned direct `root.after(...)` writes with guarded workflow events or guarded helpers.
 - [ ] Adopt `BatchController` in GUI batch queue loading/saving and `process_next_batch_file()`.
 - [ ] Make `load_file_content(..., silent=True)` the default for batch processing.
 - [ ] Evaluate whether `_stream_openai_compatible(...)` should be adapted or kept as direct SDK logic for now.
