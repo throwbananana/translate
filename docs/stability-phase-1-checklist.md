@@ -17,11 +17,12 @@
 - [x] Add pure `translation_worker_runtime` helpers for resume clamping, worker count, context selection, segment-slot extension, progress and translated-text snapshots.
 - [x] Add `translation_worker_orchestrator` to run the serial/concurrent translation worker loop through injected callbacks without tkinter dependencies.
 - [x] Add `gui_translation_workflow` to compose the run guard, guarded scheduler and worker orchestrator into one GUI-facing workflow adapter.
+- [x] Add `run_guarded_gui_translation_lifecycle(...)` to run the guarded worker and return finalized GUI state in one helper.
 - [x] Add `gui_translation_lifecycle` to plan resume/reset start state and finalize worker results into legacy GUI state fields.
 - [x] Add unit tests for GUI translation adapter helpers, including scheduled stale callback rejection.
 - [x] Add unit tests for worker runtime helper behavior before GUI rewiring.
 - [x] Add unit tests for worker orchestrator behavior: serial context, parallel no-context, resume, failure pause, cancellation stop, progress and snapshots.
-- [x] Add unit tests for guarded GUI workflow behavior: normal scheduled updates, queued update skip after cancel, and stale-run refusal.
+- [x] Add unit tests for guarded GUI workflow behavior: normal scheduled updates, queued update skip after cancel, stale-run refusal, and guarded lifecycle finalization.
 - [x] Add unit tests for GUI translation lifecycle behavior: resume/reset decisions, success/failure finalization, and stopped/paused completion blocking.
 - [x] Add `BatchTaskRecord` and normalized batch task statuses.
 - [x] Add `BatchController` to normalize queues, select next runnable tasks, update statuses, cancel pending tasks and serialize back to legacy dicts.
@@ -43,14 +44,15 @@
 - [x] Remove tracked runtime config, config backup and legacy autosave artifacts.
 - [x] Confirm CI and `python-tests` are green after the secrets scan repair.
 - [x] Confirm CI and `python-tests` are green after the guarded GUI workflow commits.
+- [x] Confirm CI and `python-tests` are green after the GUI lifecycle helper commits.
 
 ## Next implementation steps
 
-- [ ] Confirm CI on latest GUI lifecycle helper commits.
+- [ ] Confirm CI on latest guarded lifecycle workflow commits.
 - [ ] Wire `start_guarded_translation_run(...)` into `BookTranslatorGUI.start_translation()`.
 - [ ] Use `plan_gui_translation_start(...)` in `BookTranslatorGUI.start_translation()`.
-- [ ] Replace `BookTranslatorGUI.translate_text()` body with a thin adapter around `run_guarded_gui_translation_worker(...)`.
-- [ ] Use `finalize_gui_translation_result(...)` when applying worker results.
+- [ ] Replace `BookTranslatorGUI.translate_text()` body with a thin adapter around `run_guarded_gui_translation_lifecycle(...)`.
+- [ ] Apply the returned `GuiTranslationFinishState` in one guarded GUI callback.
 - [ ] Pass the config snapshot into `translate_segment()`.
 - [ ] Stop reading Tk variables from background worker code.
 - [ ] Replace run-owned `root.after(...)` writes with guarded workflow events.
