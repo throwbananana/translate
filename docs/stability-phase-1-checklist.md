@@ -17,6 +17,7 @@
 - [x] Add `guarded_final_gui_update(...)` and `schedule_guarded_final_gui_update(...)` so final accepted GUI state finishes the active run exactly once.
 - [x] Add `GuiTranslationSession` plus helpers to start/cancel guarded GUI sessions and schedule final-state application.
 - [x] Add first-pass GUI wiring patch tool for guarded imports, session state initialization and stop cancellation in `book_translator_gui.pyw`.
+- [x] Extend GUI wiring patch tool to route `start_translation()` resume/reset planning through `start_gui_translation_session(...)`, apply `session.start_state`, and pass the session into the translation thread.
 - [x] Add pure `translation_worker_runtime` helpers for resume clamping, worker count, context selection, segment-slot extension, progress and translated-text snapshots.
 - [x] Add `translation_worker_orchestrator` to run the serial/concurrent translation worker loop through injected callbacks without tkinter dependencies.
 - [x] Add `gui_translation_workflow` to compose the run guard, guarded scheduler and worker orchestrator into one GUI-facing adapter.
@@ -24,7 +25,7 @@
 - [x] Add `gui_translation_lifecycle` to plan resume/reset start state and finalize worker results into legacy GUI state fields.
 - [x] Add unit tests for GUI translation adapter helpers, including scheduled stale callback rejection and final guarded update behavior.
 - [x] Add unit tests for GUI translation session behavior: config snapshots, resume/reset planning, cancellation and final-state scheduling.
-- [x] Add unit tests for first-pass GUI wiring patch tool behavior and idempotency.
+- [x] Add unit tests for first-pass GUI wiring patch tool behavior, start-session rewrite and idempotency.
 - [x] Add unit tests for worker runtime helper behavior before GUI rewiring.
 - [x] Add unit tests for worker orchestrator behavior: serial context, parallel no-context, resume, failure pause, cancellation stop, progress and snapshots.
 - [x] Add unit tests for guarded GUI workflow behavior: normal scheduled updates, queued update skip after cancel, stale-run refusal, and guarded lifecycle finalization.
@@ -53,13 +54,12 @@
 - [x] Confirm CI and `python-tests` are green after the guarded lifecycle workflow/docs head.
 - [x] Confirm CI and `python-tests` are green after the guarded final update/docs head.
 - [x] Confirm CI and `python-tests` are green after the GUI translation session helper commits.
+- [x] Confirm CI and `python-tests` are green after the first-pass GUI wiring patch-tool commits.
 
 ## Next implementation steps
 
-- [ ] Confirm CI on latest GUI wiring patch-tool commits.
-- [ ] Apply or extend `tools/wire_gui_translation_session.py` against `book_translator_gui.pyw`.
-- [ ] Wire `start_gui_translation_session(...)` into `BookTranslatorGUI.start_translation()`.
-- [ ] Apply `session.start_state` in `BookTranslatorGUI.start_translation()`.
+- [ ] Confirm CI on latest start-session GUI wiring patch commits.
+- [ ] Apply or further extend `tools/wire_gui_translation_session.py` against `book_translator_gui.pyw`.
 - [ ] Replace `BookTranslatorGUI.translate_text()` body with a thin adapter around `run_guarded_gui_translation_lifecycle(...)`.
 - [ ] Apply the returned `GuiTranslationFinishState` via `schedule_gui_translation_final_state(...)`.
 - [ ] Pass the config snapshot into `translate_segment()`.
