@@ -15,12 +15,14 @@
 - [x] Add GUI-facing adapter helpers to read Tk-style values on the GUI thread, start guarded runs, and skip stale worker UI updates.
 - [x] Add `schedule_guarded_gui_update(...)` for Tk `root.after(...)` callbacks so queued UI writes re-check the active run at execution time.
 - [x] Add `guarded_final_gui_update(...)` and `schedule_guarded_final_gui_update(...)` so final accepted GUI state finishes the active run exactly once.
+- [x] Add `GuiTranslationSession` plus helpers to start/cancel guarded GUI sessions and schedule final-state application.
 - [x] Add pure `translation_worker_runtime` helpers for resume clamping, worker count, context selection, segment-slot extension, progress and translated-text snapshots.
 - [x] Add `translation_worker_orchestrator` to run the serial/concurrent translation worker loop through injected callbacks without tkinter dependencies.
 - [x] Add `gui_translation_workflow` to compose the run guard, guarded scheduler and worker orchestrator into one GUI-facing adapter.
 - [x] Add `run_guarded_gui_translation_lifecycle(...)` to run the guarded worker and return finalized GUI state in one helper.
 - [x] Add `gui_translation_lifecycle` to plan resume/reset start state and finalize worker results into legacy GUI state fields.
 - [x] Add unit tests for GUI translation adapter helpers, including scheduled stale callback rejection and final guarded update behavior.
+- [x] Add unit tests for GUI translation session behavior: config snapshots, resume/reset planning, cancellation and final-state scheduling.
 - [x] Add unit tests for worker runtime helper behavior before GUI rewiring.
 - [x] Add unit tests for worker orchestrator behavior: serial context, parallel no-context, resume, failure pause, cancellation stop, progress and snapshots.
 - [x] Add unit tests for guarded GUI workflow behavior: normal scheduled updates, queued update skip after cancel, stale-run refusal, and guarded lifecycle finalization.
@@ -47,14 +49,15 @@
 - [x] Confirm CI and `python-tests` are green after the guarded GUI workflow commits.
 - [x] Confirm CI and `python-tests` are green after the GUI lifecycle helper commits.
 - [x] Confirm CI and `python-tests` are green after the guarded lifecycle workflow/docs head.
+- [x] Confirm CI and `python-tests` are green after the guarded final update/docs head.
 
 ## Next implementation steps
 
-- [ ] Confirm CI on latest guarded final update commits.
-- [ ] Wire `start_guarded_translation_run(...)` into `BookTranslatorGUI.start_translation()`.
-- [ ] Use `plan_gui_translation_start(...)` in `BookTranslatorGUI.start_translation()`.
+- [ ] Confirm CI on latest GUI translation session helper commits.
+- [ ] Wire `start_gui_translation_session(...)` into `BookTranslatorGUI.start_translation()`.
+- [ ] Apply `session.start_state` in `BookTranslatorGUI.start_translation()`.
 - [ ] Replace `BookTranslatorGUI.translate_text()` body with a thin adapter around `run_guarded_gui_translation_lifecycle(...)`.
-- [ ] Apply the returned `GuiTranslationFinishState` via `schedule_guarded_final_gui_update(...)`.
+- [ ] Apply the returned `GuiTranslationFinishState` via `schedule_gui_translation_final_state(...)`.
 - [ ] Pass the config snapshot into `translate_segment()`.
 - [ ] Stop reading Tk variables from background worker code.
 - [ ] Replace run-owned `root.after(...)` writes with guarded workflow events.
