@@ -9,16 +9,13 @@
 - Pull request: `#2` — `Refactor: add stability phase controller groundwork`
 - Base branch: `main`
 - Last recorded progress date: `2026-06-26`
-- Last green CI-confirmed head before this update: `313e79527a9f186ae0702a0cd65f869a30506165`
+- Last green CI-confirmed head before this update: `61916c0c6170d3bee32aa3f6a7765b6fd53f7897`
 - Latest implementation commits before this tracker update:
-  - `3b6bfc22dfd8512cba5cae1616f417d1c34a98b3` — add GUI translation session checklist item
-  - `5659607376aeb2707d1b567f1f09086a80990913` — add GUI translation wiring patch tool
-  - `4251ffa9c779572923d5321db17d5ce471180b77` — cover GUI translation wiring patch tool in tests
-  - `7c8287f68e746bc1b74c4ed650f2d9b420c2d067` — record GUI wiring patch tool progress
-  - `313e79527a9f186ae0702a0cd65f869a30506165` — add GUI wiring patch tool checklist item
-  - `78e9849a99b2f2fd9f5d8f6b8da71e754613e151` — extend GUI wiring patch to start session
-  - `ec7f93bfca05c325b92c1f2ca45bc6182c7e2077` — cover start session GUI wiring patch
-- Test status: CI and `python-tests` passed on `313e79527a9f186ae0702a0cd65f869a30506165`, confirming the first-pass GUI wiring patch-tool/docs head. The latest start-session patch-tool code head `ec7f93bfca05c325b92c1f2ca45bc6182c7e2077` still needs CI confirmation.
+  - `e00f4883413de51462e9706c15f6f7dd6d581636` — extend GUI wiring patch to guarded lifecycle
+  - `8f5888bbfd28aa6a841ef3439105a6c15e31f436` — cover guarded lifecycle GUI wiring patch
+- Test status:
+  - GitHub Actions `CI` and `python-tests` passed on `61916c0c6170d3bee32aa3f6a7765b6fd53f7897`.
+  - The new guarded-lifecycle patch-tool commits above still need GitHub Actions confirmation after this docs update.
 - Merge guidance: use **Squash merge** because this branch contains many process commits.
 
 ## 1. Upgrade objective
@@ -26,8 +23,8 @@
 The project is feature-rich, but the main risks are runtime stability and maintainability:
 
 1. `book_translator_gui.pyw` still owns too much workflow orchestration.
-2. Background workers can still read Tk variables directly.
-3. Stopped/cancelled translations can still produce late UI writes until the GUI is rewired.
+2. Background workers can still read Tk variables directly until the generated GUI patch is applied.
+3. Stopped/cancelled translations can still produce late UI writes until the actual GUI file is rewired.
 4. Batch processing can still block on message boxes until `silent=True` is wired into GUI loading.
 5. Provider timeout handling was inconsistent across OpenAI-compatible, Gemini and Claude paths.
 6. Batch task persistence needs normalized status/error/output tracking.
@@ -37,12 +34,12 @@ The project is feature-rich, but the main risks are runtime stability and mainta
 
 | Area | Progress | Notes |
 |---|---:|---|
-| Overall upgrade plan | ~70% | Provider adapter wiring is mostly complete; controller-side translation worker orchestration, guarded GUI workflow/lifecycle/session helpers, final guarded updates, and reproducible GUI wiring patch tooling now exist. Direct runtime replacement in `book_translator_gui.pyw` is still pending. |
-| Stability phase 1 foundations | ~99% | Run config, run guard, GUI adapter, guarded GUI workflow/lifecycle/session helpers, batch controller, provider adapters, worker runtime helpers, worker orchestrator, engine provider wiring and GUI wiring patch tooling are added. Latest start-session patch head still needs CI confirmation. |
+| Overall upgrade plan | ~72% | Provider adapter wiring is mostly complete; controller-side translation orchestration, guarded GUI workflow/lifecycle/session helpers, final guarded updates, and reproducible GUI wiring patch tooling now exist. The patch tool now also generates the guarded `translate_text(...)` / config-snapshot `translate_segment(...)` rewrite, but the generated GUI diff has not yet been committed. |
+| Stability phase 1 foundations | ~99% | Run config, run guard, GUI adapter, guarded GUI workflow/lifecycle/session helpers, batch controller, provider adapters, worker runtime helpers, worker orchestrator, engine provider wiring and GUI wiring patch tooling are added. Latest guarded-lifecycle patch-tool commits still need CI confirmation. |
 | Provider timeout / adapter layer | ~95% | OpenAI-compatible, Gemini and Claude non-streaming engine paths are wired through adapters. Streaming path still needs separate evaluation. |
-| GUI thread-safety integration | ~70% | Helper layer can snapshot config, plan resume/reset state, guard direct/queued UI writes, compute worker-loop decisions without Tk reads, run/finalize workers through injected callbacks, finish the run after final GUI state is applied, expose one session object for GUI start/stop wiring, and now has an idempotent patch tool covering imports, guarded state initialization, stop cancellation, and `start_translation()` session creation/thread argument wiring. |
+| GUI thread-safety integration | ~80% | Helper layer can snapshot config, plan resume/reset state, guard queued UI writes, compute worker-loop decisions without Tk reads, run/finalize workers through injected callbacks, finish the run after final GUI state is applied, expose one session object for GUI start/stop wiring, and now has an idempotent patch tool covering `start_translation()`, `stop_translation()`, guarded `translate_text(...)`, final-state application, and config-snapshot `translate_segment(...)`. Runtime still needs the generated patch applied/reviewed in `book_translator_gui.pyw`. |
 | Batch silent/resumable flow | ~55% | `BatchTaskRecord` and `BatchController` exist; GUI batch flow is not rewired yet. |
-| CI confirmation | ~90% | Last confirmed green head is `313e79527a9f186ae0702a0cd65f869a30506165`; latest start-session patch head `ec7f93bfca05c325b92c1f2ca45bc6182c7e2077` still needs CI confirmation. |
+| CI confirmation | ~90% | `61916c0c6170d3bee32aa3f6a7765b6fd53f7897` is confirmed green. New guarded-lifecycle patch-tool/docs head still needs CI confirmation. |
 
 ## 3. Completed work
 
@@ -77,13 +74,16 @@ Completed behavior:
 - `run_guarded_gui_translation_lifecycle(...)`, which runs the guarded worker and returns a finalized `GuiTranslationFinishState`.
 - `gui_translation_lifecycle` helpers that plan legacy GUI start state and finalize worker results into legacy GUI state fields.
 - `BatchTaskRecord` and `BatchController` for normalized batch queue state.
-- `tools/wire_gui_translation_session.py` now applies idempotent first-pass GUI wiring locally:
-  - insert controller imports;
+- `tools/wire_gui_translation_session.py` now applies idempotent GUI wiring locally:
+  - insert or upgrade controller imports;
   - initialize `self.translation_run_guard` and `self.current_translation_session`;
   - replace `start_translation()` resume/reset planning with `start_gui_translation_session(...)`;
   - apply `session.start_state` to legacy fields;
   - pass `session` into the translation thread;
-  - cancel the active guarded session from `stop_translation()`.
+  - cancel the active guarded session from `stop_translation()`;
+  - rewrite `translate_text(self, session=None)` into a thin adapter around `run_guarded_gui_translation_lifecycle(...)`;
+  - apply `GuiTranslationFinishState` through `schedule_gui_translation_final_state(...)`;
+  - rewrite `translate_segment(..., config=None)` so guarded workers use immutable config snapshots instead of reading `target_language_var` / `style_var` from the background thread.
 
 ### 3.2 Provider adapter and engine integration
 
@@ -98,8 +98,8 @@ Not completed:
 
 - Streaming OpenAI-compatible path still uses direct SDK client logic and should be evaluated separately.
 - `book_translator_gui.pyw` still needs direct file modification or local patch-tool execution before runtime uses guarded sessions.
-- `translate_text()` still needs to become a thin adapter around `run_guarded_gui_translation_lifecycle(...)`.
-- `translate_segment()` still needs a config parameter to avoid background Tk variable reads.
+- The generated guarded `translate_text(...)` rewrite needs review for legacy retry/cache behavior before being committed to the actual GUI file.
+- Batch processing still needs GUI rewiring through `BatchController`.
 
 ### 3.3 Tests added
 
@@ -120,9 +120,9 @@ Focused unit tests now include:
 
 Recent test additions/fixes:
 
-- `tests/test_wire_gui_translation_session.py` now covers import insertion, guarded state initialization, stop cancellation, `start_translation()` session wiring, removal of old resume/thread blocks, legacy import upgrade, idempotency and missing-anchor failure.
-- CI and `python-tests` passed on `313e79527a9f186ae0702a0cd65f869a30506165`, confirming the first-pass GUI wiring patch-tool/docs head.
-- Latest start-session patch-tool head `ec7f93bfca05c325b92c1f2ca45bc6182c7e2077` still needs CI confirmation.
+- `tests/test_wire_gui_translation_session.py` now covers import insertion/upgrades, guarded state initialization, stop cancellation, `start_translation()` session wiring, guarded lifecycle `translate_text(...)` generation, final-state scheduling, `translate_segment(..., config=None)` snapshot use, removal of old resume/thread blocks, idempotency and missing-anchor failure.
+- I locally syntax-checked the updated patch tool and ran the focused patch-tool test module in a temporary copy: 6 tests passed.
+- GitHub Actions `CI` and `python-tests` passed on `61916c0c6170d3bee32aa3f6a7765b6fd53f7897`; the new guarded-lifecycle patch-tool commits need CI confirmation.
 
 Recommended focused test command:
 
@@ -134,14 +134,14 @@ py -m pytest tests/test_translation_run_config.py tests/test_run_guard.py tests/
 
 ### P0 — finish stability phase 1
 
-1. Confirm CI on latest start-session patch-tool head `ec7f93bfca05c325b92c1f2ca45bc6182c7e2077`.
-2. Apply or further extend `tools/wire_gui_translation_session.py` against `book_translator_gui.pyw`.
-3. Rewire `book_translator_gui.pyw` worker path:
-   - replace `BookTranslatorGUI.translate_text()` body with a thin adapter around `run_guarded_gui_translation_lifecycle(...)`;
-   - apply the returned `GuiTranslationFinishState` via `schedule_gui_translation_final_state(...)`;
-   - pass the config snapshot into `translate_segment()`;
-   - stop background worker reads of `self.concurrency_var`, `self.target_language_var`, `self.style_var`.
-4. Guard worker UI writes through guarded workflow events.
+1. Confirm CI on the guarded-lifecycle patch-tool/docs head.
+2. Run `tools/wire_gui_translation_session.py` against `book_translator_gui.pyw` locally and review the generated diff.
+3. Commit the reviewed generated GUI diff only after confirming:
+   - `translate_text()` calls `run_guarded_gui_translation_lifecycle(...)`;
+   - final state is applied via `schedule_gui_translation_final_state(...)`;
+   - `translate_segment(..., config=...)` receives the config snapshot;
+   - worker-owned Tk reads from `self.concurrency_var`, `self.target_language_var`, and `self.style_var` are removed.
+4. Validate whether the legacy single-thread retry behavior should remain inside the guarded worker flow or become a follow-up controller helper.
 5. Rewire GUI batch processing through `BatchController` and `load_file_content(..., silent=True)`.
 6. Evaluate streaming provider path.
 
@@ -171,7 +171,11 @@ Added run config, run guard, GUI adapter helpers, worker runtime helpers, worker
 
 ### 2026-06-26 — GUI wiring patch tooling
 
-Added `tools/wire_gui_translation_session.py` and `tests/test_wire_gui_translation_session.py`. The tool now covers first-pass `book_translator_gui.pyw` wiring for imports, guarded session state initialization, `start_translation()` session creation/start-state application/thread argument passing, and `stop_translation()` cancellation.
+Added `tools/wire_gui_translation_session.py` and `tests/test_wire_gui_translation_session.py`. The tool covered first-pass `book_translator_gui.pyw` wiring for imports, guarded session state initialization, `start_translation()` session creation/start-state application/thread argument passing, and `stop_translation()` cancellation.
+
+### 2026-06-26 — guarded lifecycle patch-tool extension
+
+Extended `tools/wire_gui_translation_session.py` so the generated GUI patch can rewrite `translate_text(self, session=None)` into a guarded workflow adapter and rewrite `translate_segment(..., config=None)` to use immutable config snapshots. Updated `tests/test_wire_gui_translation_session.py` to cover the generated guarded lifecycle and segment-config rewrite.
 
 ## 6. Mandatory update rule for future implementation
 
