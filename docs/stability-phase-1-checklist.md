@@ -14,7 +14,9 @@
 - [x] Add unit tests for run guard behavior.
 - [x] Add GUI-facing adapter helpers to read Tk-style values on the GUI thread, start guarded runs, and skip stale worker UI updates.
 - [x] Add `schedule_guarded_gui_update(...)` for Tk `root.after(...)` callbacks so queued UI writes re-check the active run at execution time.
+- [x] Add pure `translation_worker_runtime` helpers for resume clamping, worker count, context selection, segment-slot extension, progress and translated-text snapshots.
 - [x] Add unit tests for GUI translation adapter helpers, including scheduled stale callback rejection.
+- [x] Add unit tests for worker runtime helper behavior before GUI rewiring.
 - [x] Add `BatchTaskRecord` and normalized batch task statuses.
 - [x] Add `BatchController` to normalize queues, select next runnable tasks, update task statuses, cancel pending tasks and serialize back to legacy dicts.
 - [x] Add unit tests for legacy batch queue normalization, batch state transitions and silent-loading decisions.
@@ -37,9 +39,10 @@
 
 ## Next implementation steps
 
-- [ ] Confirm latest CI after the guarded scheduler helper commits.
+- [ ] Confirm latest CI after the worker runtime helper commits.
 - [ ] Wire `start_guarded_translation_run(...)` into `BookTranslatorGUI.start_translation()`.
 - [ ] Pass the config snapshot into `translate_text()` and `translate_segment()`.
+- [ ] Replace worker-loop calculations with `translation_worker_runtime` helpers.
 - [ ] Stop reading Tk variables from background worker code.
 - [ ] Replace run-owned `root.after(...)` writes with `schedule_guarded_gui_update(...)`.
 - [ ] Use `guarded_gui_update(...)` or `should_apply_gui_update(...)` before any direct worker UI write-back.
