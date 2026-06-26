@@ -16,7 +16,7 @@
 - [x] Add `schedule_guarded_gui_update(...)` for Tk `root.after(...)` callbacks so queued UI writes re-check the active run at execution time.
 - [x] Add pure `translation_worker_runtime` helpers for resume clamping, worker count, context selection, segment-slot extension, progress and translated-text snapshots.
 - [x] Add `translation_worker_orchestrator` to run the serial/concurrent translation worker loop through injected callbacks without tkinter dependencies.
-- [x] Add `gui_translation_workflow` to compose the run guard, guarded scheduler and worker orchestrator into one GUI-facing workflow adapter.
+- [x] Add `gui_translation_workflow` to compose the run guard, guarded scheduler and worker orchestrator into one GUI-facing adapter.
 - [x] Add `run_guarded_gui_translation_lifecycle(...)` to run the guarded worker and return finalized GUI state in one helper.
 - [x] Add `gui_translation_lifecycle` to plan resume/reset start state and finalize worker results into legacy GUI state fields.
 - [x] Add unit tests for GUI translation adapter helpers, including scheduled stale callback rejection.
@@ -48,7 +48,7 @@
 
 ## Next implementation steps
 
-- [ ] Confirm CI on latest guarded lifecycle workflow commits.
+- [ ] Confirm CI on latest guarded lifecycle workflow/docs head.
 - [ ] Wire `start_guarded_translation_run(...)` into `BookTranslatorGUI.start_translation()`.
 - [ ] Use `plan_gui_translation_start(...)` in `BookTranslatorGUI.start_translation()`.
 - [ ] Replace `BookTranslatorGUI.translate_text()` body with a thin adapter around `run_guarded_gui_translation_lifecycle(...)`.
