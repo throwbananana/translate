@@ -3,7 +3,9 @@ import pytest
 from controllers.gui_translation_adapter import (
     build_run_config_from_gui_state,
     cancel_guarded_translation_run,
+    guarded_final_gui_update,
     guarded_gui_update,
+    schedule_guarded_final_gui_update,
     schedule_guarded_gui_update,
     start_guarded_translation_run,
 )
@@ -94,6 +96,46 @@ def test_guarded_gui_update_skips_stale_or_cancelled_runs():
     assert calls == ["new"]
 
 
+def test_guarded_final_gui_update_applies_once_and_finishes_active_run():
+    guard = TranslationRunGuard()
+    run = start_guarded_translation_run(
+        guard,
+        api_type="openai",
+        target_language="中文",
+        style="直译 (Literal)",
+    )
+    calls = []
+
+    assert guarded_final_gui_update(guard, run.run_id, calls.append, "done") is True
+    assert calls == ["done"]
+    assert guard.should_accept_result(run.run_id) is False
+    assert guard.snapshot().is_active is False
+
+    assert guarded_final_gui_update(guard, run.run_id, calls.append, "late") is False
+    assert calls == ["done"]
+
+
+def test_guarded_final_gui_update_skips_stale_run_without_finishing_current_run():
+    guard = TranslationRunGuard()
+    stale = start_guarded_translation_run(
+        guard,
+        api_type="openai",
+        target_language="中文",
+        style="直译 (Literal)",
+    )
+    current = start_guarded_translation_run(
+        guard,
+        api_type="openai",
+        target_language="中文",
+        style="直译 (Literal)",
+    )
+    calls = []
+
+    assert guarded_final_gui_update(guard, stale.run_id, calls.append, "old") is False
+    assert calls == []
+    assert guard.should_accept_result(current.run_id) is True
+
+
 def test_schedule_guarded_gui_update_rechecks_guard_when_callback_runs():
     guard = TranslationRunGuard()
     scheduler = FakeTkScheduler()
@@ -135,3 +177,57 @@ def test_schedule_guarded_gui_update_rechecks_guard_when_callback_runs():
 
     scheduler.callbacks[1]()
     assert calls == ["current"]
+
+
+def test_schedule_guarded_final_gui_update_finishes_only_after_queued_callback_runs():
+    guard = TranslationRunGuard()
+    scheduler = FakeTkScheduler()
+    calls = []
+    run = start_guarded_translation_run(
+        guard,
+        api_type="openai",
+        target_language="中文",
+        style="直译 (Literal)",
+    )
+
+    token = schedule_guarded_final_gui_update(
+        guard,
+        run.run_id,
+        scheduler,
+        calls.append,
+        "done",
+    )
+
+    assert token == "after-1"
+    assert guard.should_accept_result(run.run_id) is True
+    scheduler.callbacks[0]()
+
+    assert calls == ["done"]
+    assert guard.should_accept_result(run.run_id) is False
+    assert guard.snapshot().is_active is False
+
+
+def test_schedule_guarded_final_gui_update_skips_when_cancelled_before_callback_runs():
+    guard = TranslationRunGuard()
+    scheduler = FakeTkScheduler()
+    calls = []
+    run = start_guarded_translation_run(
+        guard,
+        api_type="openai",
+        target_language="中文",
+        style="直译 (Literal)",
+    )
+
+    schedule_guarded_final_gui_update(
+        guard,
+        run.run_id,
+        scheduler,
+        calls.append,
+        "done",
+    )
+    cancel_guarded_translation_run(guard)
+    scheduler.callbacks[0]()
+
+    assert calls == []
+    assert guard.should_accept_result(run.run_id) is False
+    assert guard.snapshot().is_active is False
