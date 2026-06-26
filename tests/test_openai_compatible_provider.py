@@ -9,7 +9,7 @@ from providers.openai_compatible import OpenAICompatibleProvider
 
 pytestmark = pytest.mark.unit
 
-DUMMY_API_KEY = "unit" + "-test"
+DUMMY_KEY = "unit" + "-test"
 
 
 class FakeCompletions:
@@ -66,7 +66,7 @@ class FakeTimeoutOpenAIModule:
 
 def test_create_client_passes_base_url_and_timeout():
     provider = OpenAICompatibleProvider(
-        api_key=DUMMY_API_KEY,
+        api_key=DUMMY_KEY,  # pragma: allowlist secret
         model="demo-model",
         base_url="http://127.0.0.1:1234/v1",
         timeout_seconds="45",
@@ -75,14 +75,14 @@ def test_create_client_passes_base_url_and_timeout():
 
     client = provider.create_client()
 
-    assert client.kwargs["api_key"] == DUMMY_API_KEY
+    assert client.kwargs["api_key"] == DUMMY_KEY  # pragma: allowlist secret
     assert client.kwargs["base_url"] == "http://127.0.0.1:1234/v1"
     assert client.kwargs["timeout"] == 45.0
 
 
 def test_translate_passes_request_timeout_and_returns_tokens():
     provider = OpenAICompatibleProvider(
-        api_key=DUMMY_API_KEY,
+        api_key=DUMMY_KEY,  # pragma: allowlist secret
         model="default-model",
         timeout_seconds=30,
         openai_module=FakeOpenAIModule,
@@ -110,7 +110,7 @@ def test_translate_passes_request_timeout_and_returns_tokens():
 
 def test_translate_maps_sdk_timeout_errors():
     provider = OpenAICompatibleProvider(
-        api_key=DUMMY_API_KEY,
+        api_key=DUMMY_KEY,  # pragma: allowlist secret
         model="default-model",
         timeout_seconds=30,
         openai_module=FakeTimeoutOpenAIModule,
