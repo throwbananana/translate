@@ -21,6 +21,8 @@
 - [x] Extend GUI wiring patch tool to generate guarded `translate_text(self, session=None)` lifecycle wiring through `run_guarded_gui_translation_lifecycle(...)`.
 - [x] Extend GUI wiring patch tool to generate final-state application through `schedule_gui_translation_final_state(...)`.
 - [x] Extend GUI wiring patch tool to generate `translate_segment(..., config=None)` so guarded workers use config snapshots instead of Tk variable reads for target language/style.
+- [x] Apply generated guarded-session wiring to the real `book_translator_gui.pyw`.
+- [x] Confirm the generated GUI wiring is idempotent with `tools/wire_gui_translation_session.py --check`.
 - [x] Add pure `translation_worker_runtime` helpers for resume clamping, worker count, context selection, segment-slot extension, progress and translated-text snapshots.
 - [x] Add `translation_worker_orchestrator` to run the serial/concurrent translation worker loop through injected callbacks without tkinter dependencies.
 - [x] Add `gui_translation_workflow` to compose the run guard, guarded scheduler and worker orchestrator into one GUI-facing adapter.
@@ -59,12 +61,11 @@
 - [x] Confirm CI and `python-tests` are green after the GUI translation session helper commits.
 - [x] Confirm CI and `python-tests` are green after the first-pass GUI wiring patch-tool commits.
 - [x] Confirm CI and `python-tests` are green on `61916c0c6170d3bee32aa3f6a7765b6fd53f7897`.
+- [x] Confirm local validation after generated GUI wiring: focused controller/provider/GUI pytest, full pytest, `test_startup.py`, and `test_core_features.py`.
 
 ## Next implementation steps
 
-- [ ] Confirm CI on the guarded-lifecycle patch-tool/docs head.
-- [ ] Run `tools/wire_gui_translation_session.py` against `book_translator_gui.pyw` and review the generated diff.
-- [ ] Commit the reviewed generated `book_translator_gui.pyw` diff.
+- [ ] Confirm GitHub Actions on the generated-GUI-wiring head before merging.
 - [ ] Validate whether legacy single-thread retry should be preserved inside the guarded worker flow or moved into a follow-up controller helper.
 - [ ] Replace any remaining run-owned direct `root.after(...)` writes with guarded workflow events or guarded helpers.
 - [ ] Adopt `BatchController` in GUI batch queue loading/saving and `process_next_batch_file()`.

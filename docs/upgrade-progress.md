@@ -8,14 +8,20 @@
 - Working branch: `upgrade/stability-phase-1`
 - Pull request: `#2` — `Refactor: add stability phase controller groundwork`
 - Base branch: `main`
-- Last recorded progress date: `2026-06-26`
+- Last recorded progress date: `2026-07-02`
 - Last green CI-confirmed head before this update: `61916c0c6170d3bee32aa3f6a7765b6fd53f7897`
-- Latest implementation commits before this tracker update:
-  - `e00f4883413de51462e9706c15f6f7dd6d581636` — extend GUI wiring patch to guarded lifecycle
-  - `8f5888bbfd28aa6a841ef3439105a6c15e31f436` — cover guarded lifecycle GUI wiring patch
+- Latest implementation state before this tracker update:
+  - `2adb4dcae3b5983dc512f72c9f77565a2558b04c` — latest remote branch head before the generated GUI wiring was applied locally
+  - This update applies the generated guarded-session wiring to `book_translator_gui.pyw`
 - Test status:
   - GitHub Actions `CI` and `python-tests` passed on `61916c0c6170d3bee32aa3f6a7765b6fd53f7897`.
-  - The new guarded-lifecycle patch-tool commits above still need GitHub Actions confirmation after this docs update.
+  - Local validation after applying the generated GUI wiring passed on 2026-07-02:
+    - `python tools/wire_gui_translation_session.py --check book_translator_gui.pyw`
+    - focused controller/provider/GUI wiring pytest command listed below
+    - `python -m pytest -q`
+    - `python test_startup.py`
+    - `python test_core_features.py`
+  - GitHub Actions confirmation is still required on the pushed generated-GUI-wiring head before merging.
 - Merge guidance: use **Squash merge** because this branch contains many process commits.
 
 ## 1. Upgrade objective
@@ -34,12 +40,12 @@ The project is feature-rich, but the main risks are runtime stability and mainta
 
 | Area | Progress | Notes |
 |---|---:|---|
-| Overall upgrade plan | ~72% | Provider adapter wiring is mostly complete; controller-side translation orchestration, guarded GUI workflow/lifecycle/session helpers, final guarded updates, and reproducible GUI wiring patch tooling now exist. The patch tool now also generates the guarded `translate_text(...)` / config-snapshot `translate_segment(...)` rewrite, but the generated GUI diff has not yet been committed. |
-| Stability phase 1 foundations | ~99% | Run config, run guard, GUI adapter, guarded GUI workflow/lifecycle/session helpers, batch controller, provider adapters, worker runtime helpers, worker orchestrator, engine provider wiring and GUI wiring patch tooling are added. Latest guarded-lifecycle patch-tool commits still need CI confirmation. |
+| Overall upgrade plan | ~78% | Provider adapter wiring is mostly complete; controller-side translation orchestration, guarded GUI workflow/lifecycle/session helpers, final guarded updates, reproducible GUI wiring patch tooling, and the generated `book_translator_gui.pyw` guarded-session diff now exist locally. |
+| Stability phase 1 foundations | ~100% | Run config, run guard, GUI adapter, guarded GUI workflow/lifecycle/session helpers, batch controller, provider adapters, worker runtime helpers, worker orchestrator, engine provider wiring, GUI wiring patch tooling, and the generated GUI wiring diff are in place. Generated-GUI-wiring head still needs GitHub Actions confirmation before merge. |
 | Provider timeout / adapter layer | ~95% | OpenAI-compatible, Gemini and Claude non-streaming engine paths are wired through adapters. Streaming path still needs separate evaluation. |
-| GUI thread-safety integration | ~80% | Helper layer can snapshot config, plan resume/reset state, guard queued UI writes, compute worker-loop decisions without Tk reads, run/finalize workers through injected callbacks, finish the run after final GUI state is applied, expose one session object for GUI start/stop wiring, and now has an idempotent patch tool covering `start_translation()`, `stop_translation()`, guarded `translate_text(...)`, final-state application, and config-snapshot `translate_segment(...)`. Runtime still needs the generated patch applied/reviewed in `book_translator_gui.pyw`. |
+| GUI thread-safety integration | ~90% | `book_translator_gui.pyw` now creates guarded translation sessions, passes the session into the worker thread, routes `translate_text(...)` through `run_guarded_gui_translation_lifecycle(...)`, applies final state through `schedule_gui_translation_final_state(...)`, and calls `translate_segment(..., config=...)` from guarded workers so target language/style/memory/glossary settings come from an immutable snapshot. |
 | Batch silent/resumable flow | ~55% | `BatchTaskRecord` and `BatchController` exist; GUI batch flow is not rewired yet. |
-| CI confirmation | ~90% | `61916c0c6170d3bee32aa3f6a7765b6fd53f7897` is confirmed green. New guarded-lifecycle patch-tool/docs head still needs CI confirmation. |
+| CI confirmation | ~90% | `61916c0c6170d3bee32aa3f6a7765b6fd53f7897` is confirmed green. The generated-GUI-wiring head still needs GitHub Actions confirmation before merge. |
 
 ## 3. Completed work
 
@@ -84,6 +90,13 @@ Completed behavior:
   - rewrite `translate_text(self, session=None)` into a thin adapter around `run_guarded_gui_translation_lifecycle(...)`;
   - apply `GuiTranslationFinishState` through `schedule_gui_translation_final_state(...)`;
   - rewrite `translate_segment(..., config=None)` so guarded workers use immutable config snapshots instead of reading `target_language_var` / `style_var` from the background thread.
+- The generated guarded-session wiring has now been applied to `book_translator_gui.pyw`:
+  - `start_translation()` creates and stores a `GuiTranslationSession`;
+  - `stop_translation()` cancels the active guarded run;
+  - the worker thread receives the session as an argument;
+  - `translate_text(self, session=None)` delegates to the guarded lifecycle adapter;
+  - final GUI state is applied through `_apply_guarded_translation_finish_state(...)`;
+  - guarded worker calls use `translate_segment(..., config=session.config)`.
 
 ### 3.2 Provider adapter and engine integration
 
@@ -97,8 +110,7 @@ Completed behavior:
 Not completed:
 
 - Streaming OpenAI-compatible path still uses direct SDK client logic and should be evaluated separately.
-- `book_translator_gui.pyw` still needs direct file modification or local patch-tool execution before runtime uses guarded sessions.
-- The generated guarded `translate_text(...)` rewrite needs review for legacy retry/cache behavior before being committed to the actual GUI file.
+- The generated guarded `translate_text(...)` rewrite still needs follow-up review for whether legacy single-thread retry behavior should be reintroduced in the guarded worker flow.
 - Batch processing still needs GUI rewiring through `BatchController`.
 
 ### 3.3 Tests added
@@ -121,8 +133,8 @@ Focused unit tests now include:
 Recent test additions/fixes:
 
 - `tests/test_wire_gui_translation_session.py` now covers import insertion/upgrades, guarded state initialization, stop cancellation, `start_translation()` session wiring, guarded lifecycle `translate_text(...)` generation, final-state scheduling, `translate_segment(..., config=None)` snapshot use, removal of old resume/thread blocks, idempotency and missing-anchor failure.
-- I locally syntax-checked the updated patch tool and ran the focused patch-tool test module in a temporary copy: 6 tests passed.
-- GitHub Actions `CI` and `python-tests` passed on `61916c0c6170d3bee32aa3f6a7765b6fd53f7897`; the new guarded-lifecycle patch-tool commits need CI confirmation.
+- The generated GUI wiring was applied to the real `book_translator_gui.pyw`, then verified with the patch-tool idempotency check, the focused controller/provider/GUI wiring pytest command, full pytest, startup script and core-feature script.
+- GitHub Actions `CI` and `python-tests` passed on `61916c0c6170d3bee32aa3f6a7765b6fd53f7897`; the generated-GUI-wiring head needs CI confirmation after push.
 
 Recommended focused test command:
 
@@ -134,16 +146,10 @@ py -m pytest tests/test_translation_run_config.py tests/test_run_guard.py tests/
 
 ### P0 — finish stability phase 1
 
-1. Confirm CI on the guarded-lifecycle patch-tool/docs head.
-2. Run `tools/wire_gui_translation_session.py` against `book_translator_gui.pyw` locally and review the generated diff.
-3. Commit the reviewed generated GUI diff only after confirming:
-   - `translate_text()` calls `run_guarded_gui_translation_lifecycle(...)`;
-   - final state is applied via `schedule_gui_translation_final_state(...)`;
-   - `translate_segment(..., config=...)` receives the config snapshot;
-   - worker-owned Tk reads from `self.concurrency_var`, `self.target_language_var`, and `self.style_var` are removed.
-4. Validate whether the legacy single-thread retry behavior should remain inside the guarded worker flow or become a follow-up controller helper.
-5. Rewire GUI batch processing through `BatchController` and `load_file_content(..., silent=True)`.
-6. Evaluate streaming provider path.
+1. Confirm GitHub Actions on the generated-GUI-wiring head before merging.
+2. Validate whether the legacy single-thread retry behavior should remain inside the guarded worker flow or become a follow-up controller helper.
+3. Rewire GUI batch processing through `BatchController` and `load_file_content(..., silent=True)`.
+4. Evaluate streaming provider path.
 
 ### P1 — controller extraction after P0
 
@@ -176,6 +182,10 @@ Added `tools/wire_gui_translation_session.py` and `tests/test_wire_gui_translati
 ### 2026-06-26 — guarded lifecycle patch-tool extension
 
 Extended `tools/wire_gui_translation_session.py` so the generated GUI patch can rewrite `translate_text(self, session=None)` into a guarded workflow adapter and rewrite `translate_segment(..., config=None)` to use immutable config snapshots. Updated `tests/test_wire_gui_translation_session.py` to cover the generated guarded lifecycle and segment-config rewrite.
+
+### 2026-07-02 — generated guarded GUI wiring applied
+
+Ran `tools/wire_gui_translation_session.py book_translator_gui.pyw` and reviewed the generated diff. `book_translator_gui.pyw` now uses guarded translation sessions for start/stop, worker lifecycle, final-state application and immutable config-snapshot translation calls. Local validation passed with the patch-tool idempotency check, focused controller/provider/GUI wiring pytest command, full pytest, `test_startup.py` and `test_core_features.py`.
 
 ## 6. Mandatory update rule for future implementation
 
