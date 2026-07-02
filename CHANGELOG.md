@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- 新增 `controllers.translation_run_config`，为后台翻译线程提供不可变运行配置快照，后续用于移除 worker 对 Tk 变量的直接读取
+- 新增 `controllers.run_guard`，为停止翻译后的迟到 worker 结果提供统一拒收机制
+- 新增 `controllers.gui_translation_adapter`，集中处理 GUI/Tk 变量读取、guarded run 启动和 stale worker UI 写回过滤
+- 新增 `controllers.batch_task` 与 `controllers.batch_controller`，统一批量任务状态、错误记录、输出路径、旧队列兼容转换、下一任务选择、队列状态统计和 silent-loading 判断
+- 新增 `providers/` adapter 基础层，包含统一 request/response/error 类型、OpenAI-compatible/Gemini/Claude provider timeout 处理、从现有 APIConfig/custom-local-model 设置构造 adapter 的工厂函数，以及兼容 `translation_engine.py` 当前 tuple 返回值的 engine bridge
+- `translation_engine.py` 非流式 OpenAI / DeepSeek / LM Studio / custom-local 调用已接入 OpenAI-compatible adapter bridge，Gemini / Claude 非流式调用也已接入对应 provider adapters，并新增 `timeout_seconds` 配置传递
+- 新增 `docs/upgrade-plan.md` 与 `docs/upgrade-progress.md`，记录稳定性、controller 下沉、Provider Adapter、批量任务路线、当前进度和每次实施必须更新进度的规则
+- 新增 `tests/test_translation_run_config.py`、`tests/test_run_guard.py`、`tests/test_gui_translation_adapter.py`、`tests/test_batch_task.py`、`tests/test_batch_controller.py`、`tests/test_provider_base.py`、`tests/test_openai_compatible_provider.py`、`tests/test_openai_compatible_factory.py`、`tests/test_gemini_provider.py`、`tests/test_claude_provider.py`、`tests/test_engine_bridge.py`、`tests/test_translation_engine_adapter_bridge.py` 与 `tests/test_translation_engine_gemini_claude_adapter_bridge.py`，覆盖运行配置、停止保护、GUI adapter、批量任务状态、批量队列控制、Provider timeout/factory 默认值、Gemini/Claude timeout 映射、engine bridge 和 TranslationEngine 接入行为
+- 测试中的静态假 API key / credential 字符串已改为运行时 dummy 值，减少 detect-secrets 误报风险
+- 移除 tracked patch mbox artifacts：`translate-upgrade-series-0001-0009.mbox` 与 `translate-upgrade-series-0001-0009-fixed.mbox`
+- 移除 root/patch 目录下的历史 GUI 修复脚本、patch bundle 和 `book_translator_gui.pyw.bak_v5` 备份文件，降低 repository scan 误报面并改善仓库卫生
+- 移除 tracked runtime config artifacts：`translator_config.json`、`config_backups/*.json`、旧 `test_autosave.py` 和 `API_AUTO_SAVE.txt`
+- CI secrets job 现在会上传 `detect-secrets.log` artifact，便于定位 repository scan 失败的具体文件/行
 - 新增 `scripts/manual_tests/`，迁移旧手工测试脚本并保留根目录兼容入口
 - 移除手工脚本和工具脚本中的明文 Gemini API Key，统一改为环境变量读取
 - 新增 `run_manual_tests.bat`、GitHub Actions CI、开发依赖与 pytest 标记配置

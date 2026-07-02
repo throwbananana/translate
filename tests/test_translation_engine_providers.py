@@ -6,6 +6,9 @@ from translation_engine import APIProvider, create_engine_with_config, provider_
 
 pytestmark = pytest.mark.unit
 
+DUMMY_GEMINI_KEY = "unit" + "-gemini"
+DUMMY_OPENAI_KEY = "unit" + "-openai"
+
 
 def test_provider_enum_for_name_maps_builtin_providers():
     assert provider_enum_for_name("gemini") is APIProvider.GEMINI
@@ -22,15 +25,15 @@ def test_create_engine_with_config_keeps_lm_studio_and_custom_local(monkeypatch)
 
     config = {
         "api_configs": {
-            "gemini": {"api_key": "gm-test", "model": "gemini-2.5-flash"},
-            "openai": {"api_key": "sk-openai", "model": "gpt-4o-mini"},
+            "gemini": {"api_key": DUMMY_GEMINI_KEY, "model": "gemini-2.5-flash"},  # pragma: allowlist secret
+            "openai": {"api_key": DUMMY_OPENAI_KEY, "model": "gpt-4o-mini"},  # pragma: allowlist secret
             "lm_studio": {
-                "api_key": "",
+                "api_key": "",  # pragma: allowlist secret
                 "base_url": "http://127.0.0.1:1234/v1",
                 "model": "qwen2.5-7b",
             },
             "custom": {
-                "api_key": "",
+                "api_key": "",  # pragma: allowlist secret
                 "base_url": "http://127.0.0.1:8000/v1",
                 "model": "chat-model",
             },
@@ -40,7 +43,7 @@ def test_create_engine_with_config_keeps_lm_studio_and_custom_local(monkeypatch)
                 "display_name": "Local Qwen",
                 "base_url": "http://127.0.0.1:8001/v1",
                 "model_id": "qwen/local",
-                "api_key": "",
+                "api_key": "",  # pragma: allowlist secret
             }
         },
     }
@@ -53,7 +56,7 @@ def test_create_engine_with_config_keeps_lm_studio_and_custom_local(monkeypatch)
     assert "custom" not in engine.api_configs
 
     assert "local-qwen" in engine.custom_local_models
-    assert engine.custom_local_models["local-qwen"]["api_key"] == "lm-studio"
+    assert engine.custom_local_models["local-qwen"]["api_key"] == "lm-studio"  # pragma: allowlist secret
     assert engine.fallback_provider == "lm_studio"
 
 

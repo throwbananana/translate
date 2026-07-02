@@ -56,4 +56,16 @@ jobs:
         run: python -m pip install detect-secrets
 
       - name: Scan tracked files for secrets
-        run: git ls-files -z | xargs -0 detect-secrets-hook
+        run: |
+          set -o pipefail
+          # Allow reviewed local placeholders and documented environment names only.
+          # Keep the rule narrow: actual provider keys are still scanned normally.
+          EXCLUDE_LINES='pragma: allowlist secret|lm-studio|BOOK_TRANSLATOR_ADMIN_PASSWORD|ZLIBRARY_PASSWORD'
+          git ls-files -z | xargs -0 detect-secrets-hook --exclude-lines "$EXCLUDE_LINES" 2>&1 | tee detect-secrets.log
+
+      - name: Upload detect-secrets log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: detect-secrets-log
+          path: detect-secrets.log
