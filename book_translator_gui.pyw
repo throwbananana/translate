@@ -20,6 +20,7 @@ import sys
 import os
 import time
 import datetime
+import importlib.util
 from pathlib import Path
 import re
 import json
@@ -70,6 +71,8 @@ try:
 except ImportError:
     REQUESTS_SUPPORT = False
 
+PLAYWRIGHT_SUPPORT = importlib.util.find_spec("playwright") is not None
+
 from file_processor import FileProcessor
 from app_paths import get_runtime_file
 from config_manager import ConfigManager, get_config_manager
@@ -82,6 +85,7 @@ from translation_engine import (
     APIProvider,
     provider_enum_for_name,
 )
+from providers import BrowserAutomationProvider, get_browser_model_preset, normalize_browser_model_config
 from cost_estimator import CostEstimator
 from docx_handler import DocxHandler
 from audio_manager import AudioManager
@@ -97,6 +101,7 @@ from provider_utils import (
     provider_error_message,
     provider_ready,
     validate_builtin_provider,
+    validate_browser_model,
 )
 from translation_review import (
     apply_manual_translation as apply_manual_translation_review,
@@ -214,6 +219,7 @@ class BookTranslatorGUI:
         # API配置
         self.api_configs = deepcopy(DEFAULT_API_CONFIGS)
         self.custom_local_models = {}  # 自定义本地模型存储
+        self.browser_models = {}  # Playwright 网页模型存储
         self.target_language_var = tk.StringVar(value=DEFAULT_TARGET_LANGUAGE)
 
         # 独立的翻译和解析API选择
@@ -278,7 +284,7 @@ class BookTranslatorGUI:
         provider_enum = provider_enum_for_name(api_type)
         if provider_enum is not None:
             return provider_enum.value
-        if api_type in self.custom_local_models:
+        if api_type in self.custom_local_models or api_type in getattr(self, 'browser_models', {}):
             return api_type
         return APIProvider.GEMINI.value
 
@@ -346,6 +352,8 @@ class BookTranslatorGUI:
             on_open_analysis_config=lambda: self.open_api_config_for('analysis'),
             on_add_local_model=self.open_add_local_model_dialog,
             on_manage_local_models=self.open_manage_local_models_dialog,
+            on_add_browser_model=self.open_add_browser_model_dialog,
+            on_manage_browser_models=self.open_manage_browser_models_dialog,
             on_update_concurrency_label=self.update_concurrency_label,
         )
         self.translation_api_combo = self.api_panel.translation_api_combo
@@ -936,6 +944,7 @@ class BookTranslatorGUI:
                 api_type,
                 api_configs=self.api_configs,
                 custom_local_models=self.custom_local_models,
+                browser_models=getattr(self, 'browser_models', {}),
                 support_flags=self._provider_support_flags(),
             )
             self.api_status_var.set(reason or "未配置")
@@ -951,6 +960,7 @@ class BookTranslatorGUI:
             "openai": OPENAI_SUPPORT,
             "claude": CLAUDE_SUPPORT,
             "requests": REQUESTS_SUPPORT,
+            "playwright": PLAYWRIGHT_SUPPORT,
         }
 
     def _provider_ready_for_gui(self, api_type):
@@ -959,6 +969,7 @@ class BookTranslatorGUI:
             api_type,
             api_configs=self.api_configs,
             custom_local_models=self.custom_local_models,
+            browser_models=getattr(self, 'browser_models', {}),
             support_flags=self._provider_support_flags(),
         )
 
@@ -971,6 +982,7 @@ class BookTranslatorGUI:
             api_type,
             api_configs=self.api_configs,
             custom_local_models=self.custom_local_models,
+            browser_models=getattr(self, 'browser_models', {}),
             support_flags=self._provider_support_flags(),
         ) or "当前提供商尚未配置完成"
 
@@ -981,6 +993,8 @@ class BookTranslatorGUI:
         messagebox.showwarning("警告", reason)
         if api_type in self.custom_local_models:
             self.open_edit_local_model_dialog(api_type)
+        elif api_type in getattr(self, 'browser_models', {}):
+            self.open_edit_browser_model_dialog(api_type)
         else:
             self.open_api_config(api_type)
         return False
@@ -1223,6 +1237,8 @@ class BookTranslatorGUI:
         # 如果是自定义本地模型，打开编辑对话框
         if api_type in self.custom_local_models:
             self.open_edit_local_model_dialog(api_type)
+        elif api_type in getattr(self, 'browser_models', {}):
+            self.open_edit_browser_model_dialog(api_type)
         else:
             self.open_api_config(api_type)
 
@@ -1504,6 +1520,366 @@ class BookTranslatorGUI:
         ttk.Button(btn_frame, text="保存", command=save_changes).pack(side=tk.LEFT, padx=5)
         ttk.Button(btn_frame, text="取消", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
 
+    def _browser_model_key_from_name(self, name):
+        """从显示名称生成唯一网页模型键。"""
+        base_key = re.sub(r"[^0-9A-Za-z_\u4e00-\u9fff]+", "_", name.strip().lower()).strip("_")
+        if not base_key:
+            base_key = f"browser_{uuid.uuid4().hex[:8]}"
+
+        key = base_key
+        suffix = 2
+        while key in self.api_configs or key in self.custom_local_models or key in self.browser_models:
+            key = f"{base_key}_{suffix}"
+            suffix += 1
+        return key
+
+    def add_browser_model(self, name, config):
+        """添加 Playwright 网页模型。"""
+        key = self._browser_model_key_from_name(name)
+        model_config = normalize_browser_model_config(
+            key,
+            {
+                **dict(config),
+                'display_name': name,
+                'created_at': datetime.datetime.now().isoformat(),
+            },
+        )
+        self.browser_models[key] = model_config
+        self.refresh_api_dropdowns()
+        self.save_config()
+        return key
+
+    def remove_browser_model(self, key):
+        """删除 Playwright 网页模型。"""
+        if key in self.browser_models:
+            del self.browser_models[key]
+            self.refresh_api_dropdowns()
+            self.save_config()
+            return True
+        return False
+
+    def _browser_model_detail_text(self, config):
+        normalized = normalize_browser_model_config("browser", config)
+        return (
+            f"名称: {normalized.get('display_name', '')}\n"
+            f"预设: {normalized.get('preset', 'custom')}\n"
+            f"URL: {normalized.get('start_url', '')}\n"
+            f"浏览器: {normalized.get('browser', 'chromium')} | "
+            f"无头: {'是' if normalized.get('headless') else '否'}\n"
+            f"资料目录: {normalized.get('user_data_dir', '')}\n"
+            f"输入框: {normalized.get('prompt_selector', '')}\n"
+            f"响应: {normalized.get('response_selector', '')}"
+        )
+
+    def open_add_browser_model_dialog(self):
+        """打开添加网页模型对话框。"""
+        self.open_browser_model_dialog()
+
+    def open_edit_browser_model_dialog(self, model_key):
+        """打开编辑网页模型对话框。"""
+        if model_key not in self.browser_models:
+            messagebox.showerror("错误", f"网页模型 '{model_key}' 不存在")
+            return
+        self.open_browser_model_dialog(model_key)
+
+    def open_browser_model_dialog(self, model_key=None):
+        """新增或编辑 Playwright 网页模型。"""
+        is_edit = model_key is not None
+        config = normalize_browser_model_config(
+            model_key or "browser",
+            self.browser_models.get(model_key, get_browser_model_preset("custom")),
+        )
+
+        preset_labels = {
+            "custom": "自定义网页模型",
+            "deepseek_web": "DeepSeek 网页端",
+            "gemini_web": "Gemini 网页端",
+            "chatgpt_web": "ChatGPT 网页端",
+        }
+        label_to_preset = {label: preset for preset, label in preset_labels.items()}
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title("编辑网页模型" if is_edit else "添加网页模型")
+        dialog.geometry("720x620")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        frame = ttk.Frame(dialog, padding="16")
+        frame.pack(fill=tk.BOTH, expand=True)
+        frame.columnconfigure(1, weight=1)
+
+        name_var = tk.StringVar(value=config.get('display_name', ''))
+        preset_var = tk.StringVar(value=preset_labels.get(config.get('preset'), preset_labels["custom"]))
+        start_url_var = tk.StringVar(value=config.get('start_url', ''))
+        browser_var = tk.StringVar(value=config.get('browser', 'chromium'))
+        headless_var = tk.BooleanVar(value=bool(config.get('headless')))
+        user_data_dir_var = tk.StringVar(value=config.get('user_data_dir', ''))
+        prompt_selector_var = tk.StringVar(value=config.get('prompt_selector', ''))
+        submit_selector_var = tk.StringVar(value=config.get('submit_selector', ''))
+        response_selector_var = tk.StringVar(value=config.get('response_selector', ''))
+        timeout_var = tk.StringVar(value=str(int(float(config.get('timeout_seconds', 180)))))
+        settle_var = tk.StringVar(value=str(config.get('settle_seconds', 3)))
+        navigate_var = tk.BooleanVar(value=bool(config.get('navigate_each_request')))
+
+        def add_row(row, label, variable, width=68):
+            ttk.Label(frame, text=label).grid(row=row, column=0, sticky=tk.W, pady=4)
+            entry = ttk.Entry(frame, textvariable=variable, width=width)
+            entry.grid(row=row, column=1, sticky=(tk.W, tk.E), pady=4, padx=5)
+            return entry
+
+        add_row(0, "显示名称:", name_var, width=42)
+
+        ttk.Label(frame, text="预设:").grid(row=1, column=0, sticky=tk.W, pady=4)
+        preset_frame = ttk.Frame(frame)
+        preset_frame.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=4, padx=5)
+        preset_combo = ttk.Combobox(
+            preset_frame,
+            textvariable=preset_var,
+            values=list(preset_labels.values()),
+            state="readonly",
+            width=28,
+        )
+        preset_combo.pack(side=tk.LEFT)
+
+        add_row(2, "Start URL:", start_url_var)
+        ttk.Label(frame, text="浏览器:").grid(row=3, column=0, sticky=tk.W, pady=4)
+        ttk.Combobox(
+            frame,
+            textvariable=browser_var,
+            values=["chromium", "firefox", "webkit"],
+            state="readonly",
+            width=18,
+        ).grid(row=3, column=1, sticky=tk.W, pady=4, padx=5)
+
+        ttk.Checkbutton(frame, text="无头模式", variable=headless_var).grid(
+            row=4,
+            column=1,
+            sticky=tk.W,
+            pady=4,
+            padx=5,
+        )
+        ttk.Checkbutton(frame, text="每次请求前重新打开 Start URL", variable=navigate_var).grid(
+            row=5,
+            column=1,
+            sticky=tk.W,
+            pady=4,
+            padx=5,
+        )
+        add_row(6, "资料目录:", user_data_dir_var)
+        add_row(7, "输入框选择器:", prompt_selector_var)
+        add_row(8, "提交按钮选择器:", submit_selector_var)
+        add_row(9, "响应选择器:", response_selector_var)
+        add_row(10, "超时秒数:", timeout_var, width=12)
+        add_row(11, "稳定等待秒数:", settle_var, width=12)
+
+        help_label = ttk.Label(
+            frame,
+            text=(
+                "说明: 网页模型通过 Playwright 控制已登录网页，不会绕过登录、验证码或网站限制。\n"
+                "第一次建议使用有头模式登录；登录状态会保存在资料目录中。选择器如失效，可在这里手动调整。"
+            ),
+            foreground="gray",
+            justify=tk.LEFT,
+        )
+        help_label.grid(row=12, column=0, columnspan=2, sticky=tk.W, pady=(10, 4))
+
+        def apply_preset():
+            preset = label_to_preset.get(preset_var.get(), "custom")
+            preset_config = normalize_browser_model_config(model_key or "browser", get_browser_model_preset(preset))
+            if not is_edit and not name_var.get().strip():
+                name_var.set(preset_config.get('display_name', ''))
+            start_url_var.set(preset_config.get('start_url', ''))
+            browser_var.set(preset_config.get('browser', 'chromium'))
+            headless_var.set(bool(preset_config.get('headless')))
+            prompt_selector_var.set(preset_config.get('prompt_selector', ''))
+            submit_selector_var.set(preset_config.get('submit_selector', ''))
+            response_selector_var.set(preset_config.get('response_selector', ''))
+            timeout_var.set(str(int(float(preset_config.get('timeout_seconds', 180)))))
+            settle_var.set(str(preset_config.get('settle_seconds', 3)))
+            navigate_var.set(bool(preset_config.get('navigate_each_request')))
+
+        ttk.Button(preset_frame, text="应用预设", command=apply_preset).pack(side=tk.LEFT, padx=8)
+
+        def collect_config():
+            try:
+                timeout_seconds = float(timeout_var.get().strip() or 180)
+            except ValueError:
+                timeout_seconds = 180
+            try:
+                settle_seconds = float(settle_var.get().strip() or 3)
+            except ValueError:
+                settle_seconds = 3
+
+            return {
+                'display_name': name_var.get().strip(),
+                'preset': label_to_preset.get(preset_var.get(), "custom"),
+                'start_url': start_url_var.get().strip(),
+                'browser': browser_var.get().strip() or "chromium",
+                'headless': bool(headless_var.get()),
+                'user_data_dir': user_data_dir_var.get().strip(),
+                'prompt_selector': prompt_selector_var.get().strip(),
+                'submit_selector': submit_selector_var.get().strip(),
+                'response_selector': response_selector_var.get().strip(),
+                'timeout_seconds': timeout_seconds,
+                'settle_seconds': settle_seconds,
+                'navigate_each_request': bool(navigate_var.get()),
+            }
+
+        def validate_form(config_data):
+            if not config_data['display_name']:
+                return False, "请输入显示名称"
+            return validate_browser_model(
+                model_key or config_data['display_name'],
+                config_data,
+                support_flags=self._provider_support_flags(),
+            )
+
+        def test_connection():
+            config_data = collect_config()
+            ready, reason = validate_form(config_data)
+            if not ready:
+                messagebox.showwarning("警告", reason)
+                return
+
+            test_btn.config(state='disabled', text="测试中...")
+            dialog.update()
+            provider = None
+            try:
+                provider = BrowserAutomationProvider.from_config(
+                    model_key or "browser_test",
+                    config_data,
+                )
+                response = provider.generate(
+                    "请只回复：连接测试成功",
+                    timeout_seconds=config_data.get('timeout_seconds', 180),
+                )
+                messagebox.showinfo("成功", f"网页模型连接测试完成。\n响应: {response[:120]}")
+            except Exception as e:
+                messagebox.showerror("连接失败", str(e))
+            finally:
+                if provider is not None:
+                    provider.close()
+                test_btn.config(state='normal', text="测试连接")
+
+        def save_model():
+            config_data = collect_config()
+            ready, reason = validate_form(config_data)
+            if not ready:
+                messagebox.showwarning("警告", reason)
+                return
+
+            if is_edit:
+                old_config = self.browser_models.get(model_key, {})
+                normalized = normalize_browser_model_config(model_key, config_data)
+                normalized['created_at'] = old_config.get('created_at', datetime.datetime.now().isoformat())
+                self.browser_models[model_key] = normalized
+                self.refresh_api_dropdowns()
+                self.save_config()
+                messagebox.showinfo("成功", "网页模型配置已更新")
+            else:
+                self.add_browser_model(config_data['display_name'], config_data)
+                messagebox.showinfo("成功", f"网页模型 '{config_data['display_name']}' 已添加")
+            dialog.destroy()
+
+        button_frame = ttk.Frame(frame)
+        button_frame.grid(row=13, column=0, columnspan=2, pady=16)
+        test_btn = ttk.Button(button_frame, text="测试连接", command=test_connection)
+        test_btn.pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="保存", command=save_model).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="取消", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+
+    def open_manage_browser_models_dialog(self):
+        """打开管理网页模型对话框。"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("管理网页模型")
+        dialog.geometry("620x430")
+        dialog.transient(self.root)
+        dialog.grab_set()
+
+        frame = ttk.Frame(dialog, padding="15")
+        frame.pack(fill=tk.BOTH, expand=True)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(1, weight=1)
+
+        ttk.Label(frame, text="已添加的网页模型:", font=('', 10, 'bold')).grid(row=0, column=0, sticky=tk.W, pady=(0, 5))
+
+        list_frame = ttk.Frame(frame)
+        list_frame.grid(row=1, column=0, sticky=(tk.N, tk.S, tk.E, tk.W), pady=(0, 10))
+        list_frame.columnconfigure(0, weight=1)
+        list_frame.rowconfigure(0, weight=1)
+
+        listbox = tk.Listbox(list_frame, height=12, font=('', 10))
+        listbox.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.E, tk.W))
+
+        scrollbar = ttk.Scrollbar(list_frame, orient=tk.VERTICAL, command=listbox.yview)
+        scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        listbox.config(yscrollcommand=scrollbar.set)
+
+        detail_var = tk.StringVar(value="选择一个网页模型查看详情")
+        ttk.Label(frame, textvariable=detail_var, foreground="gray", wraplength=580, justify=tk.LEFT).grid(
+            row=2,
+            column=0,
+            sticky=tk.W,
+            pady=(0, 10),
+        )
+
+        def refresh_list():
+            listbox.delete(0, tk.END)
+            if not self.browser_models:
+                listbox.insert(tk.END, "(暂无网页模型)")
+                detail_var.set("点击「+ 添加网页模型」按钮添加 DeepSeek / Gemini / ChatGPT 等网页后端")
+                return
+            for key, config in self.browser_models.items():
+                display_name = config.get('display_name', key)
+                start_url = config.get('start_url', '')
+                listbox.insert(tk.END, f"{display_name} ({start_url})")
+
+        def on_select(event=None):
+            selection = listbox.curselection()
+            if not selection or not self.browser_models:
+                return
+            keys = list(self.browser_models.keys())
+            if selection[0] >= len(keys):
+                return
+            key = keys[selection[0]]
+            detail_var.set(self._browser_model_detail_text(self.browser_models[key]))
+
+        def edit_selected():
+            selection = listbox.curselection()
+            if not selection or not self.browser_models:
+                messagebox.showinfo("提示", "请先选择要编辑的网页模型")
+                return
+            keys = list(self.browser_models.keys())
+            if selection[0] >= len(keys):
+                return
+            key = keys[selection[0]]
+            dialog.destroy()
+            self.open_edit_browser_model_dialog(key)
+
+        def delete_selected():
+            selection = listbox.curselection()
+            if not selection or not self.browser_models:
+                messagebox.showinfo("提示", "请先选择要删除的网页模型")
+                return
+            keys = list(self.browser_models.keys())
+            if selection[0] >= len(keys):
+                return
+            key = keys[selection[0]]
+            display_name = self.browser_models[key].get('display_name', key)
+            if messagebox.askyesno("确认删除", f"确定删除网页模型 '{display_name}'?"):
+                self.remove_browser_model(key)
+                refresh_list()
+                detail_var.set("选择一个网页模型查看详情")
+
+        listbox.bind('<<ListboxSelect>>', on_select)
+        refresh_list()
+
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=3, column=0, sticky=tk.W)
+        ttk.Button(btn_frame, text="编辑", command=edit_selected).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="删除", command=delete_selected).pack(side=tk.LEFT, padx=5)
+        ttk.Button(btn_frame, text="关闭", command=dialog.destroy).pack(side=tk.LEFT, padx=5)
+
     def open_api_config(self, api_type=None):
         """打开API配置对话框"""
         if api_type is None:
@@ -1694,7 +2070,7 @@ class BookTranslatorGUI:
         return new_config
 
     def get_all_available_apis(self):
-        """获取所有可用的API列表（内置+自定义本地模型）"""
+        """获取所有可用的API列表（内置+自定义本地模型+网页模型）"""
         apis = []
 
         # 内置API
@@ -1713,6 +2089,11 @@ class BookTranslatorGUI:
         for key, config in self.custom_local_models.items():
             display_name = config.get('display_name', key)
             apis.append((f"[本地] {display_name}", key, "custom_local"))
+
+        # Playwright 网页模型
+        for key, config in getattr(self, 'browser_models', {}).items():
+            display_name = config.get('display_name', key)
+            apis.append((f"[网页] {display_name}", key, "browser"))
 
         return apis
 
@@ -1786,6 +2167,12 @@ class BookTranslatorGUI:
                 if config.get('display_name') == display_name:
                     return key
 
+        if api_name.startswith("[网页] "):
+            display_name = api_name[5:]  # 去掉"[网页] "前缀
+            for key, config in getattr(self, 'browser_models', {}).items():
+                if config.get('display_name') == display_name:
+                    return key
+
         # 内置API映射
         api_map = {
             "Gemini API": "gemini",
@@ -1817,6 +2204,7 @@ class BookTranslatorGUI:
         try:
             self.config_manager.set('api_configs', deepcopy(self.api_configs), save=False)
             self.config_manager.set('custom_local_models', deepcopy(self.custom_local_models), save=False)
+            self.config_manager.set('browser_models', deepcopy(self.browser_models), save=False)
             self.config_manager.set('target_language', self.get_target_language(), save=False)
             self.config_manager.set('translation_style', self.style_var.get(), save=False)
             self.config_manager.set('selected_translation_api', self.translation_api_var.get(), save=False)
@@ -1847,6 +2235,7 @@ class BookTranslatorGUI:
             self.merge_api_configs(api_config_section)
 
             self.custom_local_models = loaded_config.get('custom_local_models', {})
+            self.browser_models = loaded_config.get('browser_models', {})
             target_language = loaded_config.get('target_language', DEFAULT_TARGET_LANGUAGE)
             self.target_language_var.set(target_language or DEFAULT_TARGET_LANGUAGE)
 
@@ -1868,9 +2257,14 @@ class BookTranslatorGUI:
                 name for name in self.custom_local_models
                 if self._provider_ready_for_gui(name)
             ]
+            ready_browser = [
+                name for name in self.browser_models
+                if self._provider_ready_for_gui(name)
+            ]
             print(
                 f"✓ 配置已加载: {len(ready_builtin)} 个内置API可用, "
-                f"{len(ready_local)} 个自定义本地模型可用"
+                f"{len(ready_local)} 个自定义本地模型可用, "
+                f"{len(ready_browser)} 个网页模型可用"
             )
         except Exception as e:
             error_msg = f"加载配置失败: {e}"
@@ -1905,6 +2299,8 @@ class BookTranslatorGUI:
         except Exception as e:
             print(f"保存配置时出错: {e}")
 
+        self.translation_engine.close_browser_providers()
+
         # 关闭窗口
         self.root.destroy()
 
@@ -1932,12 +2328,22 @@ class BookTranslatorGUI:
                 f"检测到上次未完成的翻译，是否从第 {len(self.translated_segments) + 1} 段继续？"
             )
 
+        concurrency_value = self.concurrency_var
+        if api_type in self.browser_models:
+            try:
+                selected_concurrency = int(float(self.concurrency_var.get()))
+            except Exception:
+                selected_concurrency = 1
+            if selected_concurrency > 1:
+                self.progress_text_var.set("网页模型将自动使用单线程，避免同一网页会话并发冲突")
+            concurrency_value = 1
+
         session = start_gui_translation_session(
             self.translation_run_guard,
             api_type=api_type,
             target_language=self.target_language_var,
             style=self.style_var,
-            concurrency=self.concurrency_var,
+            concurrency=concurrency_value,
             current_signature=current_signature,
             cached_signature=self.text_signature,
             source_segments=self.source_segments,
@@ -1982,14 +2388,18 @@ class BookTranslatorGUI:
         self.translate_btn.config(state='normal')
         self.stop_btn.config(state='disabled')
         self.progress_text_var.set("翻译已停止")
+        self.translation_engine.close_browser_providers()
 
     def sync_engine_config(self):
         """同步配置到翻译引擎"""
         # 清除旧配置
+        self.translation_engine.close_browser_providers()
         self.translation_engine.api_configs.clear()
         self.translation_engine.custom_local_models.clear()
+        self.translation_engine.browser_models.clear()
 
         support_flags = self._provider_support_flags()
+        browser_models = getattr(self, 'browser_models', {})
 
         # 同步内置 API 配置
         for name, cfg in self.api_configs.items():
@@ -2029,11 +2439,23 @@ class BookTranslatorGUI:
                 api_key=cfg.get('api_key') or 'lm-studio'
             )
 
+        # 同步 Playwright 网页模型
+        for name, cfg in browser_models.items():
+            if not provider_ready(
+                name,
+                browser_models=browser_models,
+                support_flags=support_flags,
+            ):
+                continue
+
+            self.translation_engine.add_browser_model(name, cfg)
+
         # 设置回退逻辑
         self.translation_engine.fallback_provider = choose_fallback_provider(
             api_configs=self.api_configs,
             custom_local_models=self.custom_local_models,
             support_flags=support_flags,
+            browser_models=browser_models,
         )
 
     def translate_text(self, session=None):
@@ -2134,6 +2556,7 @@ class BookTranslatorGUI:
         self.translate_btn.config(state='normal')
         self.stop_btn.config(state='disabled')
         self.is_translating = False
+        self.translation_engine.close_browser_providers()
 
     def detect_language(self, text):
         """简单的语言检测：检查是否主要是中文"""
@@ -2796,6 +3219,8 @@ class BookTranslatorGUI:
 请用{target_language}回答。"""
 
         # 根据API类型调用对应的解析方法
+        if api_type in self.browser_models:
+            return self._analyze_with_browser_model(api_type, prompt)
         if api_type in self.custom_local_models:
             return self._analyze_with_custom_local_model(api_type, prompt)
         elif api_type == 'gemini':
@@ -2813,6 +3238,8 @@ class BookTranslatorGUI:
         """使用当前选中的解析 API 进行通用文本生成。"""
         api_type = preferred_api_type or self.get_analysis_api_type()
 
+        if api_type in self.browser_models:
+            return self._analyze_with_browser_model(api_type, prompt)
         if api_type in self.custom_local_models:
             return self._analyze_with_custom_local_model(api_type, prompt)
         elif api_type == 'gemini':
@@ -2851,6 +3278,23 @@ class BookTranslatorGUI:
         )
 
         return response.choices[0].message.content
+
+    def _analyze_with_browser_model(self, model_key, prompt):
+        """使用 Playwright 网页模型进行解析或通用文本生成。"""
+        if not PLAYWRIGHT_SUPPORT:
+            raise ImportError("缺少 playwright 库，无法调用网页模型")
+
+        if model_key not in self.browser_models:
+            raise ValueError(f"网页模型 '{model_key}' 未配置")
+
+        provider = BrowserAutomationProvider.from_config(model_key, self.browser_models[model_key])
+        try:
+            return provider.generate(
+                prompt,
+                timeout_seconds=self.browser_models[model_key].get('timeout_seconds', 180),
+            )
+        finally:
+            provider.close()
 
     def _analyze_with_gemini(self, prompt):
         """使用Gemini API进行解析"""

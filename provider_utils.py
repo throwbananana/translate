@@ -25,6 +25,7 @@ def _normalize_support_flags(support_flags: Optional[Dict[str, bool]] = None) ->
         "openai": True,
         "claude": True,
         "requests": True,
+        "playwright": True,
     }
     if support_flags:
         flags.update(support_flags)
@@ -115,19 +116,44 @@ def validate_custom_local_model(
     return True, ""
 
 
+def validate_browser_model(
+    model_name: str,
+    config: Optional[Dict[str, str]],
+    support_flags: Optional[Dict[str, bool]] = None,
+) -> Tuple[bool, str]:
+    """校验 Playwright 网页模型是否可用。"""
+    flags = _normalize_support_flags(support_flags)
+    config = config or {}
+
+    if not flags["playwright"]:
+        return False, "缺少 playwright 库，无法使用网页模型"
+
+    missing = _missing_fields(config, ["start_url", "prompt_selector", "response_selector"])
+    if missing:
+        return False, f"网页模型 {model_name} 缺少必要配置: {', '.join(missing)}"
+
+    return True, ""
+
+
 def provider_ready(
     provider_name: str,
     api_configs: Optional[Dict[str, Dict[str, str]]] = None,
     custom_local_models: Optional[Dict[str, Dict[str, str]]] = None,
+    browser_models: Optional[Dict[str, Dict[str, str]]] = None,
     support_flags: Optional[Dict[str, bool]] = None,
 ) -> bool:
     """统一判断 provider 是否可用。"""
     api_configs = api_configs or {}
     custom_local_models = custom_local_models or {}
+    browser_models = browser_models or {}
 
     if provider_name in custom_local_models:
         return validate_custom_local_model(
             provider_name, custom_local_models.get(provider_name), support_flags
+        )[0]
+    if provider_name in browser_models:
+        return validate_browser_model(
+            provider_name, browser_models.get(provider_name), support_flags
         )[0]
 
     return validate_builtin_provider(provider_name, api_configs.get(provider_name), support_flags)[0]
@@ -137,15 +163,21 @@ def provider_error_message(
     provider_name: str,
     api_configs: Optional[Dict[str, Dict[str, str]]] = None,
     custom_local_models: Optional[Dict[str, Dict[str, str]]] = None,
+    browser_models: Optional[Dict[str, Dict[str, str]]] = None,
     support_flags: Optional[Dict[str, bool]] = None,
 ) -> str:
     """获取 provider 当前不可用的具体原因。"""
     api_configs = api_configs or {}
     custom_local_models = custom_local_models or {}
+    browser_models = browser_models or {}
 
     if provider_name in custom_local_models:
         return validate_custom_local_model(
             provider_name, custom_local_models.get(provider_name), support_flags
+        )[1]
+    if provider_name in browser_models:
+        return validate_browser_model(
+            provider_name, browser_models.get(provider_name), support_flags
         )[1]
 
     return validate_builtin_provider(provider_name, api_configs.get(provider_name), support_flags)[1]
@@ -185,19 +217,43 @@ def list_ready_custom_local_models(
     return ready
 
 
+def list_ready_browser_models(
+    browser_models: Optional[Dict[str, Dict[str, str]]] = None,
+    support_flags: Optional[Dict[str, bool]] = None,
+) -> List[str]:
+    """返回当前可用的 Playwright 网页模型列表。"""
+    browser_models = browser_models or {}
+    ready = []
+
+    for provider_name in browser_models:
+        if provider_ready(
+            provider_name,
+            browser_models=browser_models,
+            support_flags=support_flags,
+        ):
+            ready.append(provider_name)
+
+    return ready
+
+
 def choose_fallback_provider(
     api_configs: Optional[Dict[str, Dict[str, str]]] = None,
     custom_local_models: Optional[Dict[str, Dict[str, str]]] = None,
     support_flags: Optional[Dict[str, bool]] = None,
+    browser_models: Optional[Dict[str, Dict[str, str]]] = None,
 ) -> Optional[str]:
     """按约定优先级选择一个可用回退 provider。"""
     api_configs = api_configs or {}
     custom_local_models = custom_local_models or {}
+    browser_models = browser_models or {}
 
     if provider_ready("lm_studio", api_configs=api_configs, support_flags=support_flags):
         return "lm_studio"
 
     for provider_name in list_ready_custom_local_models(custom_local_models, support_flags=support_flags):
+        return provider_name
+
+    for provider_name in list_ready_browser_models(browser_models, support_flags=support_flags):
         return provider_name
 
     for provider_name in ("deepseek", "openai", "gemini", "claude", "custom"):

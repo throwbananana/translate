@@ -8,6 +8,7 @@
 
 - 支持输入格式：TXT、Markdown、PDF、EPUB、DOCX、RTF
 - 支持翻译提供商：Gemini、OpenAI、Claude、DeepSeek、LM Studio、兼容 OpenAI 的自定义接口
+- 支持 Playwright 网页模型：通过有头/无头浏览器控制已登录网页端作为 API 替代后端
 - 支持自定义本地模型与云端额度耗尽后的回退
 - 翻译记忆库（TM）与术语表注入
 - 失败段落重试 / 人工修正
@@ -25,6 +26,12 @@
 
 ```bash
 py -m pip install -r requirements.txt
+```
+
+如果要使用 DeepSeek / Gemini / ChatGPT 等网页端作为后端，还需要安装 Playwright 浏览器：
+
+```bash
+py -m playwright install chromium
 ```
 
 如果你要运行测试：
@@ -55,6 +62,7 @@ py book_translator_gui.pyw
 - `openai`
 - `anthropic`
 - `requests`
+- `playwright`
 - `PyPDF2`
 - `pdfplumber`
 - `pdf2image`
@@ -97,6 +105,7 @@ manual_outputs/           # 手工测试输出目录（运行时生成）
 
 - `LM Studio` 不要求真实 API Key，只要求 `Base URL + 模型名称` 可用
 - 自定义本地模型要求 `Base URL + Model ID`
+- Playwright 网页模型要求 `Start URL + 输入框选择器 + 响应选择器`；第一次建议使用有头模式完成网页登录
 - 自定义兼容 OpenAI API 要求 `API Key + Base URL + 模型名称`
 - GUI 与 `translation_engine.py` 现在共用 `provider_utils.py` 进行可用性校验和回退选择
 

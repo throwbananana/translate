@@ -8,6 +8,7 @@
 - 所有 API Key 一律通过环境变量读取
 - 输出文件默认写入仓库根目录下的 `manual_outputs/`
 - 根目录旧 `test_*.py` 目前保留为兼容入口，实际会转发到这里
+- `manual_browser_web_translation.py` 使用本地模拟网页验证三个 Playwright 网页端 preset，不需要真实网页登录或 API Key
 
 建议环境变量：
 

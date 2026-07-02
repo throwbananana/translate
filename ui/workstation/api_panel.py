@@ -31,6 +31,8 @@ class ApiPanel:
         on_open_analysis_config,
         on_add_local_model,
         on_manage_local_models,
+        on_add_browser_model,
+        on_manage_browser_models,
         on_update_concurrency_label,
     ):
         self.frame = ttk.LabelFrame(parent, text="API配置", padding="10")
@@ -75,7 +77,12 @@ class ApiPanel:
             side=tk.LEFT,
             padx=(0, 5),
         )
-        ttk.Button(model_btn_frame, text="管理本地模型", command=on_manage_local_models).pack(side=tk.LEFT)
+        ttk.Button(model_btn_frame, text="管理本地模型", command=on_manage_local_models).pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Button(model_btn_frame, text="+ 添加网页模型", command=on_add_browser_model).pack(
+            side=tk.LEFT,
+            padx=(0, 5),
+        )
+        ttk.Button(model_btn_frame, text="管理网页模型", command=on_manage_browser_models).pack(side=tk.LEFT)
 
         self.api_status_var = tk.StringVar(value="未配置")
         self.api_status_label = ttk.Label(

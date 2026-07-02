@@ -6,6 +6,7 @@ from provider_utils import (
     provider_error_message,
     provider_ready,
     validate_builtin_provider,
+    validate_browser_model,
     validate_custom_local_model,
 )
 
@@ -51,6 +52,30 @@ def test_custom_local_model_requires_base_url_and_model_id():
     assert ready is False
     assert "base_url" in reason
     assert "model_id" in reason
+
+
+def test_browser_model_requires_playwright_and_selectors():
+    ready, reason = validate_browser_model(
+        "deepseek-web",
+        {"start_url": "https://chat.deepseek.com/", "prompt_selector": "", "response_selector": ".markdown"},
+        support_flags={"playwright": True},
+    )
+
+    assert ready is False
+    assert "prompt_selector" in reason
+
+    ready, reason = validate_browser_model(
+        "deepseek-web",
+        {
+            "start_url": "https://chat.deepseek.com/",
+            "prompt_selector": "textarea",
+            "response_selector": ".markdown",
+        },
+        support_flags={"playwright": False},
+    )
+
+    assert ready is False
+    assert "缺少 playwright 库" in reason
 
 
 def test_choose_fallback_provider_prefers_lm_studio():

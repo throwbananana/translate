@@ -52,6 +52,41 @@ def test_sync_engine_config_keeps_lm_studio_without_api_key(gui_module):
     assert gui.translation_engine.fallback_provider == "lm_studio"
 
 
+def test_sync_engine_config_keeps_browser_models(gui_module):
+    gui = gui_module.BookTranslatorGUI.__new__(gui_module.BookTranslatorGUI)
+    gui.api_configs = {}
+    gui.custom_local_models = {}
+    gui.browser_models = {
+        "deepseek-web": {
+            "display_name": "DeepSeek Web",
+            "start_url": "https://chat.deepseek.com/",
+            "prompt_selector": "textarea",
+            "response_selector": ".markdown",
+        }
+    }
+    gui.translation_engine = TranslationEngine()
+    gui._provider_support_flags = lambda: {
+        "gemini": True,
+        "openai": True,
+        "claude": True,
+        "requests": True,
+        "playwright": True,
+    }
+
+    gui.sync_engine_config()
+
+    assert "deepseek-web" in gui.translation_engine.browser_models
+    assert gui.translation_engine.fallback_provider == "deepseek-web"
+
+
+def test_map_api_name_to_key_supports_browser_models(gui_module):
+    gui = gui_module.BookTranslatorGUI.__new__(gui_module.BookTranslatorGUI)
+    gui.custom_local_models = {}
+    gui.browser_models = {"gemini-web": {"display_name": "Gemini Web"}}
+
+    assert gui._map_api_name_to_key("[网页] Gemini Web") == "gemini-web"
+
+
 def test_browse_file_uses_file_processor_filters(gui_module, monkeypatch):
     captured = {}
 

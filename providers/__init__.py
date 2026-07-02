@@ -5,6 +5,12 @@ They should expose small, testable classes with explicit timeout handling.
 """
 
 from .base import ProviderRequest, ProviderResponse
+from .browser_automation import (
+    BROWSER_MODEL_PRESETS,
+    BrowserAutomationProvider,
+    get_browser_model_preset,
+    normalize_browser_model_config,
+)
 from .claude_provider import ClaudeProvider
 from .engine_bridge import (
     build_translation_system_instruction,
@@ -28,12 +34,16 @@ from .openai_compatible_factory import (
 __all__ = [
     "ProviderRequest",
     "ProviderResponse",
+    "BROWSER_MODEL_PRESETS",
+    "BrowserAutomationProvider",
     "ProviderError",
     "ProviderTimeoutError",
     "ProviderQuotaError",
     "ProviderAuthError",
     "ProviderResponseError",
     "OpenAICompatibleProvider",
+    "get_browser_model_preset",
+    "normalize_browser_model_config",
     "GeminiProvider",
     "ClaudeProvider",
     "build_openai_compatible_provider",

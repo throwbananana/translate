@@ -87,6 +87,7 @@ DEFAULT_CONFIG = {
         'enable_zlibrary': False
     },
     'custom_local_models': {},
+    'browser_models': {},
     'translation_style': '通俗小说 (Novel)',
     'concurrency': 1,
     'context_enabled': True,

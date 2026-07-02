@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- 新增 Playwright 网页模型后端，可通过有头/无头浏览器控制 DeepSeek / Gemini / ChatGPT 等已登录网页端作为 API 替代，并接入 GUI 配置、provider 校验、翻译/解析路径和配置持久化
 - 新增 `controllers.translation_run_config`，为后台翻译线程提供不可变运行配置快照，后续用于移除 worker 对 Tk 变量的直接读取
 - 新增 `controllers.run_guard`，为停止翻译后的迟到 worker 结果提供统一拒收机制
 - 新增 `controllers.gui_translation_adapter`，集中处理 GUI/Tk 变量读取、guarded run 启动和 stale worker UI 写回过滤

@@ -16,17 +16,20 @@
 
 import re
 import time
+import json
+import importlib.util
 from typing import Optional, Dict, List, Callable, Generator, Any
 from dataclasses import dataclass
 from enum import Enum
 
 from provider_utils import (
     choose_fallback_provider,
+    list_ready_browser_models,
     list_ready_builtin_providers,
     list_ready_custom_local_models,
     provider_ready,
 )
-from providers import ClaudeProvider, GeminiProvider, ProviderRequest
+from providers import BrowserAutomationProvider, ClaudeProvider, GeminiProvider, ProviderRequest
 from providers.engine_bridge import (
     translate_with_custom_local_config,
     translate_with_openai_compatible_config,
@@ -56,6 +59,8 @@ try:
     REQUESTS_SUPPORT = True
 except ImportError:
     REQUESTS_SUPPORT = False
+
+PLAYWRIGHT_SUPPORT = importlib.util.find_spec("playwright") is not None
 
 
 DEFAULT_PROVIDER_TIMEOUT_SECONDS = 90.0
@@ -131,6 +136,8 @@ class TranslationEngine:
         """初始化翻译引擎"""
         self.api_configs: Dict[str, APIConfig] = {}
         self.custom_local_models: Dict[str, Dict] = {}
+        self.browser_models: Dict[str, Dict] = {}
+        self._browser_provider_cache: Dict[str, tuple[str, BrowserAutomationProvider]] = {}
         self.fallback_provider: Optional[str] = None
         self.translation_memory = None
         self.glossary_manager = None
@@ -164,6 +171,19 @@ class TranslationEngine:
             'timeout_seconds': timeout_seconds,
         }
 
+    def add_browser_model(self, name: str, config: Dict[str, Any]):
+        """添加 Playwright 网页模型配置。"""
+        existing = self._browser_provider_cache.pop(name, None)
+        if existing:
+            existing[1].close()
+        self.browser_models[name] = dict(config)
+
+    def close_browser_providers(self):
+        """关闭所有已缓存的 Playwright 网页模型会话。"""
+        for _, provider in list(self._browser_provider_cache.values()):
+            provider.close()
+        self._browser_provider_cache.clear()
+
     def set_fallback_provider(self, provider_name: str):
         """设置降级时使用的提供商"""
         self.fallback_provider = provider_name
@@ -174,6 +194,7 @@ class TranslationEngine:
             "openai": OPENAI_SUPPORT,
             "claude": CLAUDE_SUPPORT,
             "requests": REQUESTS_SUPPORT,
+            "playwright": PLAYWRIGHT_SUPPORT,
         }
 
     def _serialize_api_configs(self) -> Dict[str, Dict[str, Any]]:
@@ -219,9 +240,18 @@ class TranslationEngine:
             support_flags=self._support_flags(),
         )
 
+    def _is_browser_model_ready(self, provider: str) -> bool:
+        return provider_ready(
+            provider,
+            browser_models=self.browser_models,
+            support_flags=self._support_flags(),
+        )
+
     def _select_provider(self, provider: Optional[str]) -> str:
         if provider is not None:
             if provider in self.custom_local_models and self._is_custom_local_model_ready(provider):
+                return provider
+            if provider in self.browser_models and self._is_browser_model_ready(provider):
                 return provider
             if provider in self.api_configs and self._is_builtin_config_ready(provider):
                 return provider
@@ -241,6 +271,9 @@ class TranslationEngine:
             support_flags=support_flags,
         ) + list_ready_custom_local_models(
             custom_local_models=self.custom_local_models,
+            support_flags=support_flags,
+        ) + list_ready_browser_models(
+            browser_models=self.browser_models,
             support_flags=support_flags,
         )
 
@@ -415,6 +448,8 @@ class TranslationEngine:
         # 检查是否为自定义本地模型
         if provider in self.custom_local_models:
             return self._translate_with_custom_local(text, target_lang, provider, glossary_prompt)
+        if provider in self.browser_models:
+            return self._translate_with_browser_model(text, target_lang, provider, glossary_prompt)
 
         if provider == 'gemini':
             return self._translate_with_gemini(text, target_lang, glossary_prompt)
@@ -594,6 +629,49 @@ class TranslationEngine:
             target_lang=target_lang,
             glossary_prompt=glossary_prompt,
         )
+
+    def _browser_provider_signature(self, config: Dict[str, Any]) -> str:
+        return json.dumps(config, sort_keys=True, ensure_ascii=False, default=str)
+
+    def _get_browser_provider(self, model_key: str) -> BrowserAutomationProvider:
+        config = self.browser_models.get(model_key)
+        if not config:
+            raise ValueError(f"未找到网页模型: {model_key}")
+
+        signature = self._browser_provider_signature(config)
+        cached = self._browser_provider_cache.get(model_key)
+        if cached and cached[0] == signature:
+            return cached[1]
+
+        if cached:
+            cached[1].close()
+
+        provider = BrowserAutomationProvider.from_config(model_key, config)
+        self._browser_provider_cache[model_key] = (signature, provider)
+        return provider
+
+    def _translate_with_browser_model(self, text: str, target_lang: str,
+                                      model_key: str, glossary_prompt: str = "") -> tuple:
+        """使用 Playwright 网页模型翻译。"""
+        if not PLAYWRIGHT_SUPPORT:
+            raise ImportError("未安装 playwright，无法使用网页模型")
+
+        config = self.browser_models.get(model_key)
+        if not config:
+            raise ValueError(f"未找到网页模型: {model_key}")
+
+        provider = self._get_browser_provider(model_key)
+        request = ProviderRequest(
+            text=text,
+            target_lang=target_lang,
+            system_instruction=glossary_prompt,
+            model=provider.model,
+            temperature=float(config.get("temperature", 0.2) or 0.2),
+            max_tokens=int(config.get("max_tokens", 4096) or 4096),
+            timeout_seconds=config.get("timeout_seconds") or DEFAULT_PROVIDER_TIMEOUT_SECONDS,
+        )
+        response = provider.translate(request)
+        return response.text, response.model
 
     def translate_stream(self, text: str, target_lang: str,
                          provider: str = None) -> Generator[str, None, None]:
@@ -842,6 +920,7 @@ def create_engine_with_config(config: dict) -> TranslationEngine:
         "openai": OPENAI_SUPPORT,
         "claude": CLAUDE_SUPPORT,
         "requests": REQUESTS_SUPPORT,
+        "playwright": PLAYWRIGHT_SUPPORT,
     }
 
     for name, cfg in api_configs.items():
@@ -884,10 +963,22 @@ def create_engine_with_config(config: dict) -> TranslationEngine:
             timeout_seconds=cfg.get('timeout_seconds') or cfg.get('timeout') or DEFAULT_PROVIDER_TIMEOUT_SECONDS,
         )
 
+    # Playwright 网页模型
+    for name, cfg in config.get('browser_models', {}).items():
+        if not provider_ready(
+            name,
+            browser_models={name: cfg},
+            support_flags=support_flags,
+        ):
+            continue
+
+        engine.add_browser_model(name, cfg)
+
     fallback_provider = choose_fallback_provider(
         api_configs=engine._serialize_api_configs(),
         custom_local_models=engine.custom_local_models,
         support_flags=support_flags,
+        browser_models=engine.browser_models,
     )
     if fallback_provider:
         engine.set_fallback_provider(fallback_provider)
