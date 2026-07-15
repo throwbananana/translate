@@ -4,252 +4,212 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-A modular GUI-based book translation tool (Tkinter) for translating PDF, TXT, EPUB, DOCX, and Markdown files using various AI translation APIs. Features translation memory, glossary management, and automatic API fallback.
+A modular GUI-based book translation tool (Tkinter) for translating PDF, TXT, EPUB, DOCX, Markdown, and RTF files using various AI translation APIs. Features translation memory, glossary management, automatic API fallback, browser-based translation (Playwright), PDF OCR support, and online book search.
 
-**Version:** 2.1
-**Architecture:** Modular design with separate components for file processing, translation engine, configuration, and memory management.
+**Version:** 2.3.1
 
 ## Quick Start
 
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+py -m pip install -r requirements.txt
+py -m pip install -r requirements-dev.txt
 
 # Run the application
 python book_translator_gui.pyw
-# Or use the batch launcher
-start.bat
+# Or: start.bat
 ```
 
-## Module Architecture
+## Architecture
+
+The codebase is organized into four layers:
 
 ```
-translate/
-├── book_translator_gui.pyw    # Main GUI application (Tkinter)
-├── file_processor.py          # File reading and text segmentation
-├── translation_engine.py      # Translation API orchestration
-├── translation_memory.py      # SQLite-based translation cache
-├── glossary_manager.py        # Terminology management
-├── config_manager.py          # Configuration with backup/migration
-├── translator_config.json     # User configuration (auto-generated)
-├── translation_memory.db      # Translation cache database
-├── glossaries/                # Glossary files (JSON)
-└── config_backups/            # Configuration backups
+book_translator_gui.pyw         # Main Tkinter GUI (entry point, ~4800 lines)
+├── ui/                         # GUI component modules (Tkinter widgets)
+│   ├── toc_panel.py            # Table of contents navigation
+│   ├── analysis_panel.py       # Text analysis panel
+│   ├── content_notebook.py     # Content notebook/tab area
+│   ├── failed_segments_panel.py
+│   ├── glossary_dialog.py      # Glossary editor dialog
+│   ├── library_panel.py        # Online book library browser
+│   └── workstation/            # Main workspace components
+│       ├── action_bar.py       # Action buttons (import, translate, export)
+│       ├── api_panel.py        # API configuration panel
+│       ├── file_panel.py       # File selection panel
+│       └── progress_panel.py   # Translation progress display
+├── controllers/                # Workflow orchestration (pure Python, no Tkinter)
+│   ├── gui_translation_lifecycle.py   # Translation start/finalize state
+│   ├── gui_translation_session.py     # Session management
+│   ├── gui_translation_workflow.py    # Full guarded translation workflow
+│   ├── gui_translation_adapter.py     # Guarded run coordination
+│   ├── run_guard.py            # Translation run guard/safety
+│   ├── translation_run_config.py      # Run configuration
+│   ├── translation_worker_orchestrator.py  # Worker orchestration
+│   ├── translation_worker_runtime.py  # Worker runtime helpers
+│   ├── batch_controller.py     # Batch translation controller
+│   └── batch_task.py           # Batch task model
+├── providers/                  # API adapter layer (isolates third-party SDKs)
+│   ├── base.py                 # ProviderRequest / ProviderResponse types
+│   ├── gemini_provider.py      # Gemini API adapter
+│   ├── claude_provider.py      # Claude API adapter
+│   ├── openai_compatible.py    # OpenAI-compatible adapter
+│   ├── openai_compatible_factory.py  # Provider factory methods
+│   ├── browser_automation.py   # Playwright browser-based translation
+│   ├── engine_bridge.py        # Backward-compat bridge to translation_engine
+│   └── errors.py               # Provider-specific error types
+└── core modules:
+    ├── translation_engine.py   # API orchestration and fallback logic
+    ├── file_processor.py       # File reading (PDF/EPUB/DOCX/TXT/MD/RTF) + OCR
+    ├── translation_memory.py   # SQLite translation cache
+    ├── glossary_manager.py     # Terminology management (JSON)
+    ├── config_manager.py       # Config read/write, backup, migration
+    └── app_paths.py            # App data directory paths
 ```
 
-### Module Descriptions
-
-| Module | Responsibility |
-|--------|----------------|
-| `file_processor.py` | Reads TXT/PDF/EPUB/DOCX/MD/RTF, auto-detects encoding, segments text |
-| `translation_engine.py` | Manages API calls (Gemini/OpenAI/Claude/DeepSeek/LM Studio), handles fallback |
-| `translation_memory.py` | SQLite cache for translations, avoids duplicate API calls |
-| `glossary_manager.py` | Terminology tables, injects terms into translation prompts |
-| `config_manager.py` | Configuration read/write, version migration, backup management |
+**Supporting modules:** `provider_utils.py` (validation, fallback selection), `translation_review.py` (failed segment review), `cost_estimator.py`, `audio_manager.py` (text-to-speech export), `smart_glossary.py` (auto glossary extraction), `format_converter.py`, `docx_handler.py` (DOCX format preservation), `tm_editor.py` (TM editor dialog), `online_search.py` / `book_hunter.py` (Z-Library/Anna's Archive), `cloud_upload.py`, `community_manager.py`, `web_importer.py`.
 
 ### Data Flow
 
 ```
 File → FileProcessor.read_file() → text
      → FileProcessor.split_text_into_segments() → segments[]
-     → BookTranslatorGUI.translate_segment()
-         → TranslationMemory.lookup() (cache hit? return cached)
-         → GlossaryManager.generate_prompt_injection() (inject terminology)
-         → API call (Gemini/OpenAI/LM Studio/etc.)
-         → TranslationMemory.store() (save for future)
+     → GUI triggers controllers/gui_translation_workflow
+         → controllers orchestrate TranslationEngine + providers/
+         → TranslationMemory.lookup() (cache hit? → skip API)
+         → GlossaryManager.generate_prompt_injection() (inject terms)
+         → Provider adapter (e.g. GeminiProvider) calls API
+         → TranslationMemory.store() (cache result)
      → translated_segments[]
-     → Export
+     → Export (plain text / DOCX / format-preserving)
 ```
 
-**Note:** The main GUI (`book_translator_gui.pyw`) now directly integrates `TranslationMemory` and `GlossaryManager`. The standalone `translation_engine.py` module provides an alternative programmatic interface for batch translation tasks.
+The `controllers/` layer holds pure state/configuration logic testable without Tkinter. The `providers/` layer isolates all third-party SDK calls behind a common `ProviderRequest → ProviderResponse` interface.
+
+## Build, Test, and Lint Commands
+
+```bash
+# Run the app
+python book_translator_gui.pyw
+
+# All tests (pytest)
+pytest -q
+
+# Unit tests only (no network/GUI)
+pytest -m "not integration and not gui"
+
+# With coverage
+pytest -m "not integration and not gui" --cov=. --cov-report=xml:coverage.xml
+
+# Single test file
+pytest tests/test_translation_engine.py
+
+# Legacy test scripts (not pytest)
+python test_startup.py
+python test_core_features.py
+python test_actual_translation.py
+
+# Manual tests (interactive menu)
+python scripts/manual_tests/manual_translation_smoke.py
+
+# Lint (ruff)
+ruff check tests scripts/manual_tests list_models.py
+```
+
+### CI
+
+Two GitHub Actions workflows run on push/PR:
+- **`ci.yml`** (Python 3.11): unit tests with coverage + ruff lint + detect-secrets scan
+- **`python-tests.yml`** (Python 3.10, 3.11): `pytest -q`
+
+### pytest markers (from `pytest.ini`)
+
+- `unit` — pure logic, no network or GUI
+- `integration` — depends on filesystem, external services, or system components
+- `gui` — involves Tkinter or window lifecycle
 
 ## File Format Support
 
 | Format | Module | Dependencies |
 |--------|--------|--------------|
-| TXT | file_processor.py | None (built-in) |
-| PDF | file_processor.py | PyPDF2 |
+| TXT | file_processor.py | None |
+| PDF | file_processor.py | PyPDF2, pdfplumber, pdf2image (+ pytesseract for OCR on scanned docs) |
 | EPUB | file_processor.py | ebooklib, beautifulsoup4 |
 | DOCX | file_processor.py | python-docx |
-| Markdown | file_processor.py | None (built-in) |
+| Markdown | file_processor.py | None |
 | RTF | file_processor.py | None (basic support) |
 
 ## API Provider Support
 
-| Provider | Module | Dependencies | Default Model |
-|----------|--------|--------------|---------------|
-| Gemini | translation_engine.py | google-generativeai | gemini-2.5-flash |
-| OpenAI | translation_engine.py | openai | gpt-3.5-turbo |
-| Claude | translation_engine.py | anthropic | claude-3-haiku |
-| DeepSeek | translation_engine.py | openai | deepseek-chat |
-| LM Studio | translation_engine.py | openai | (local model) |
-| Custom | translation_engine.py | requests | (user-defined) |
+| Provider | Adapter | Dependencies | Default Model |
+|----------|---------|--------------|---------------|
+| Gemini | providers/gemini_provider.py | google-generativeai | gemini-2.5-flash |
+| OpenAI | providers/openai_compatible.py | openai | gpt-3.5-turbo |
+| Claude | providers/claude_provider.py | anthropic | claude-3-haiku-20240307 |
+| DeepSeek | providers/openai_compatible.py | openai | deepseek-chat |
+| LM Studio | providers/openai_compatible.py | openai | qwen2.5-7b-instruct-1m |
+| Custom OpenAI-compatible | providers/openai_compatible.py | openai | (user-defined) |
+| Browser (Playwright) | providers/browser_automation.py | playwright | (DeepSeek/Gemini/ChatGPT web) |
 
-## Testing
+### Adding a new API provider
 
-```bash
-# Run all tests
-run_all_tests.bat
+1. Create a provider adapter in `providers/` implementing the `ProviderRequest → ProviderResponse` pattern (see `providers/base.py`)
+2. Add default config in `DEFAULT_CONFIG['api_configs']` in `config_manager.py`
+3. Wire up in `translation_engine.py` (add API key validation, translate method)
+4. Export from `providers/__init__.py`
 
-# Individual test scripts
-python test_startup.py           # Basic app initialization
-python test_core_features.py     # Core functionality checks
-python test_large_file.py        # Generates test files (1k-500k chars)
-python test_autosave.py          # Config backup/restore
-python test_actual_translation.py # Live API test (consumes tokens)
-
-# Test individual modules
-python translation_memory.py     # Translation memory self-test
-python glossary_manager.py       # Glossary manager self-test
-python file_processor.py         # File processor self-test
-python translation_engine.py     # Translation engine self-test
-python config_manager.py         # Config manager self-test
-```
-
-## Configuration Structure (v2.1)
-
-```jsonc
-{
-  "version": "2.1",
-  "target_language": "中文",
-  "segment_size": 800,
-  "use_translation_memory": true,
-  "use_glossary": true,
-  "api_configs": {
-    "gemini": { "api_key": "", "model": "gemini-2.5-flash" }, // pragma: allowlist secret
-    "openai": { "api_key": "", "model": "gpt-3.5-turbo", "base_url": "" }, // pragma: allowlist secret
-    "claude": { "api_key": "", "model": "claude-3-haiku-20240307" }, // pragma: allowlist secret
-    "deepseek": { "api_key": "", "model": "deepseek-chat", "base_url": "https://api.deepseek.com/v1" }, // pragma: allowlist secret
-    "lm_studio": { "api_key": "lm-studio", "model": "qwen2.5-7b-instruct-1m", "base_url": "http://127.0.0.1:1234/v1" }, // pragma: allowlist secret
-    "custom": { "api_key": "", "model": "", "base_url": "" } // pragma: allowlist secret
-  },
-  "custom_local_models": {}
-}
-```
-
-## Common Modifications
-
-### Adding a New File Format
+### Adding a new file format
 
 1. Add format detection in `FileProcessor.SUPPORTED_FORMATS`
 2. Implement `extract_{format}_text()` method in `file_processor.py`
 3. Add case in `read_file()` method
 4. Update `get_file_filter()` for file dialog
 
-### Adding a New API Provider
+## Configuration Structure (v2.3.1)
 
-1. Add to `APIProvider` enum in `translation_engine.py`
-2. Add default config in `DEFAULT_CONFIG['api_configs']` in `config_manager.py`
-3. Implement `_translate_with_{provider}()` in `TranslationEngine`
-4. Update `get_available_providers()` and `_do_translate()`
+Config is stored at `get_app_dir() / 'translator_config.json'` (user app data directory). Legacy config at project root is auto-migrated on first run.
 
-### Using Translation Memory
-
-```python
-from translation_memory import get_translation_memory
-
-tm = get_translation_memory()
-
-# Lookup
-cached = tm.lookup("Hello", "中文")
-
-# Store
-tm.store("Hello", "你好", "中文", api_provider="gemini")
-
-# Similar lookup
-similar = tm.lookup_similar("Hello world", "中文", threshold=0.8)
-
-# Statistics
-stats = tm.get_stats()
-```
-
-### Using Glossary Manager
-
-```python
-from glossary_manager import get_glossary_manager
-
-gm = get_glossary_manager()
-
-# Create and add terms
-gm.create_glossary("tech", "Technical terms")
-gm.load_glossary("tech")
-gm.add_term("tech", "API", "应用程序接口")
-
-# Generate prompt injection
-prompt = gm.generate_prompt_injection("This API uses...")
-# Returns: "请在翻译时使用以下术语：\n- \"API\" → \"应用程序接口\"\n\n"
-```
-
-### Using Translation Engine
-
-```python
-from translation_engine import TranslationEngine, APIConfig, APIProvider
-
-engine = TranslationEngine()
-engine.add_api_config('gemini', APIConfig(
-    provider=APIProvider.GEMINI,
-    api_key='your-key',  # pragma: allowlist secret
-    model='gemini-2.5-flash'
-))
-
-# Single translation
-result = engine.translate("Hello", "中文", provider="gemini")
-
-# Batch translation
-results = engine.translate_batch(
-    ["Hello", "World"],
-    "中文",
-    on_progress=lambda cur, total: print(f"{cur}/{total}")
-)
-
-# Streaming translation
-for chunk in engine.translate_stream("Hello", "中文"):
-    print(chunk, end="", flush=True)
+```jsonc
+{
+  "version": "2.3.1",
+  "target_language": "中文",
+  "segment_size": 800,
+  "preview_limit": 10000,
+  "max_consecutive_failures": 3,
+  "translation_delay": 0.5,
+  "translation_style": "通俗小说 (Novel)",
+  "concurrency": 1,
+  "context_enabled": true,
+  "use_translation_memory": true,
+  "use_glossary": true,
+  "selected_translation_api": "Gemini API",
+  "selected_analysis_api": "Gemini API",
+  "selected_retry_api": "本地 LM Studio",
+  "api_configs": {
+    "gemini":    { "api_key": "", "model": "gemini-2.5-flash", "temperature": 0.2 },
+    "openai":    { "api_key": "", "model": "gpt-3.5-turbo", "base_url": "", "temperature": 0.2 },
+    "claude":    { "api_key": "", "model": "claude-3-haiku-20240307", "temperature": 0.2 },
+    "deepseek":  { "api_key": "", "model": "deepseek-chat", "base_url": "https://api.deepseek.com/v1", "temperature": 0.2 },
+    "lm_studio": { "api_key": "lm-studio", "model": "qwen2.5-7b-instruct-1m", "base_url": "http://127.0.0.1:1234/v1", "temperature": 0.2 },
+    "custom":    { "api_key": "", "model": "", "base_url": "", "temperature": 0.2 }
+  },
+  "custom_local_models": {},
+  "browser_models": {},
+  "online_search": { /* zlibrary, annas_archive credentials */ },
+  "security": { "admin_password": "" },
+  "ui": { "window_width": 950, "window_height": 750, "theme": "default" }
+}
 ```
 
 ## Key Conventions
 
-### Code Style
-- Python 3 with 4-space indentation
-- UTF-8 for all file I/O
-- UI strings in Chinese
-- Type hints in module functions
-- Dataclasses for structured data
-
-### File Naming
+- Python 3 with 4-space indentation, UTF-8 for all file I/O
 - `.pyw` for GUI apps (suppresses console on Windows)
-- `test_*.py` for test scripts
-- `*_manager.py` for management modules
-- `*_engine.py` for processing engines
-
-### Database
-- SQLite for translation memory (`translation_memory.db`)
-- JSON for glossaries (`glossaries/*.json`)
-- JSON for configuration (`translator_config.json`)
-
-## Troubleshooting
-
-### Module Import Errors
-```bash
-# Install missing dependencies
-pip install PyPDF2 ebooklib beautifulsoup4 python-docx google-generativeai openai
-```
-
-### Translation Memory Issues
-```python
-# Reset translation memory
-from translation_memory import TranslationMemory
-tm = TranslationMemory()
-tm.cleanup(days=0, min_use_count=999999)  # Delete all records
-```
-
-### Configuration Issues
-```python
-# Reset to defaults
-from config_manager import ConfigManager
-cm = ConfigManager()
-cm.reset_to_defaults()
-```
+- UI strings in Chinese; type hints in module functions; dataclasses for structured data
+- SQLite for translation memory (`translation_memory.db`), JSON for glossaries and config
+- Provider adapters must expose explicit timeout handling (never hang the GUI)
+- Controller modules must be importable without Tkinter (no `import tkinter` at module level)
+- `# pragma: allowlist secret` comments on lines with placeholder API keys for detect-secrets
 
 ## Commit Guidelines
 
@@ -258,10 +218,23 @@ cm.reset_to_defaults()
 - Don't commit generated test files (`test_*k.txt`)
 - Keep `config_backups/` and `glossaries/` out of commits
 
-## Writer Tool (Subdirectory)
+## Troubleshooting
 
-A separate writing assistant application in `writer tool/` with mind mapping, script editing, and AI integration. Has its own CLAUDE.md.
-
+### Module Import Errors
 ```bash
-python "writer tool/start_app.py"
+py -m pip install PyPDF2 pdfplumber pdf2image ebooklib beautifulsoup4 python-docx pytesseract google-generativeai openai anthropic playwright
+```
+
+### Translation Memory Issues
+```python
+from translation_memory import TranslationMemory
+tm = TranslationMemory()
+tm.cleanup(days=0, min_use_count=999999)  # Delete all records
+```
+
+### Configuration Issues
+```python
+from config_manager import ConfigManager
+cm = ConfigManager()
+cm.reset_to_defaults()
 ```

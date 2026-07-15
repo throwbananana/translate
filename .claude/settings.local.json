@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(dir /s /b /ad \"G:\\\\Users\\\\123\\\\Documents\\\\GitHub\\\\translate\\\\writer*\")",
+      "Bash(dir /s /b /d \"G:\\\\Users\\\\123\\\\Documents\\\\GitHub\\\\translate\\\\*writer*\")",
+      "Bash(dir *)"
+    ]
+  }
+}
